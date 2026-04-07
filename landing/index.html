@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en" class="dark scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BatRewind — Self-Hosted Session Replay</title>
+  <meta name="description" content="Record browser sessions automatically. Replay them the moment an error happens. Self-hosted, one-command deploy — no Kafka, no Kubernetes, no cloud bill." />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            bg:      '#0f1117',
+            surface: '#1e2130',
+            border:  '#2d3350',
+            muted:   '#64748b',
+            primary: '#f59e0b',
+            green:   '#34d399',
+            red:     '#f87171',
+            orange:  '#fb923c',
+            blue:    '#60a5fa',
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #0f1117; color: #e2e8f0; font-family: ui-sans-serif, system-ui, sans-serif; overflow-x: hidden; margin: 0; }
+
+    .gradient-text { background: linear-gradient(135deg, #f59e0b, #fb923c); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .card { background: #1e2130; border: 1px solid #2d3350; border-radius: 0.75rem; }
+    pre { background: #0d1117; border: 1px solid #2d3350; border-radius: 0.5rem; overflow-x: auto; }
+    code { font-family: ui-monospace, 'Cascadia Code', monospace; font-size: 0.85em; }
+    .badge { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.2rem 0.65rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; border: 1px solid; }
+
+    /* Nav */
+    @keyframes navDown { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    nav { animation: navDown 0.5s cubic-bezier(0.16,1,0.3,1) forwards; }
+
+    /* Hero fade */
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: translateY(0); } }
+    .fu-1 { animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.1s; }
+    .fu-2 { animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.25s; }
+    .fu-3 { animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.4s; }
+    .fu-4 { animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.55s; }
+    .fu-5 { animation: fadeUp 0.8s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.7s; }
+
+    /* Scroll reveal */
+    .reveal { opacity: 0; transform: translateY(36px); transition: opacity 0.65s cubic-bezier(0.16,1,0.3,1), transform 0.65s cubic-bezier(0.16,1,0.3,1); }
+    .reveal.in { opacity: 1; transform: translateY(0); }
+
+    /* Feature cards */
+    .feat-card { opacity: 0; transform: translateY(40px); transition: opacity 0.55s cubic-bezier(0.16,1,0.3,1), transform 0.55s cubic-bezier(0.16,1,0.3,1), border-color 0.25s, box-shadow 0.25s; }
+    .feat-card.in { opacity: 1; transform: translateY(0); }
+    .feat-card:hover { border-color: rgba(245,158,11,0.45) !important; box-shadow: 0 0 28px rgba(245,158,11,0.08); transform: translateY(-3px) !important; }
+
+    /* Comparison */
+    .cmp-row { opacity: 0; transform: translateX(-16px); transition: opacity 0.5s ease, transform 0.5s ease; }
+    .cmp-row.in { opacity: 1; transform: translateX(0); }
+    .check { color: #34d399; } .cross { color: #f87171; } .partial { color: #fb923c; font-size: 0.75rem; font-weight: 600; }
+
+    /* Pulse CTA */
+    @keyframes pulseAmber { 0% { box-shadow: 0 0 0 0 rgba(245,158,11,0.5); } 70% { box-shadow: 0 0 0 12px rgba(245,158,11,0); } 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); } }
+    .btn-pulse { animation: pulseAmber 2s ease-out infinite; }
+
+    /* Typewriter */
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    .tw-cursor { display: inline-block; width: 2px; height: 1em; background: #f59e0b; margin-left: 1px; vertical-align: text-bottom; animation: blink 0.8s step-end infinite; }
+
+    /* ── REPLAY DEMO ──────────────────────────────────────────────────────── */
+
+    /* Browser chrome */
+    .browser-chrome {
+      background: #161b27;
+      border: 1px solid #2d3350;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(245,158,11,0.08);
+    }
+    .browser-bar {
+      background: #1a2035;
+      border-bottom: 1px solid #2d3350;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .browser-dots { display: flex; gap: 5px; }
+    .browser-dots span { width: 10px; height: 10px; border-radius: 50%; }
+    .browser-url {
+      flex: 1;
+      background: #0f1117;
+      border: 1px solid #2d3350;
+      border-radius: 5px;
+      padding: 3px 10px;
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      color: #64748b;
+    }
+
+    /* Fake app inside browser */
+    .fake-app {
+      background: #f8fafc;
+      min-height: 280px;
+      position: relative;
+      overflow: hidden;
+    }
+    .fake-nav {
+      background: #1e293b;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .fake-nav-logo { color: #f8fafc; font-weight: 700; font-size: 13px; }
+    .fake-nav-links { display: flex; gap: 16px; }
+    .fake-nav-links span { color: #94a3b8; font-size: 11px; cursor: pointer; }
+    .fake-body { padding: 20px; }
+    .fake-card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .fake-input {
+      width: 100%;
+      border: 1px solid #e2e8f0;
+      border-radius: 5px;
+      padding: 7px 10px;
+      font-size: 12px;
+      color: #1e293b;
+      background: #f8fafc;
+      margin-top: 4px;
+      outline: none;
+    }
+    .fake-input.focused { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+    .fake-btn {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 20px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: background 0.2s;
+    }
+    .fake-btn:hover { background: #2563eb; }
+    .fake-btn.error-state { background: #ef4444; }
+
+    /* Error toast */
+    .error-toast {
+      position: absolute;
+      top: 12px; right: 12px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 11px;
+      color: #991b1b;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+      opacity: 0;
+      transform: translateY(-8px) translateX(8px);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      max-width: 220px;
+      z-index: 10;
+    }
+    .error-toast.show { opacity: 1; transform: translateY(0) translateX(0); }
+    .error-toast-icon { font-size: 14px; flex-shrink: 0; }
+
+    /* BatRewind widget */
+    .rwd-widget {
+      position: absolute;
+      bottom: 14px; right: 14px;
+      background: #f59e0b;
+      color: #1c1108;
+      border-radius: 20px;
+      padding: 7px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(245,158,11,0.4);
+      opacity: 0;
+      transform: scale(0.8) translateY(10px);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      z-index: 20;
+      white-space: nowrap;
+    }
+    .rwd-widget.show { opacity: 1; transform: scale(1) translateY(0); }
+    .rwd-widget-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #1c1108;
+      animation: recordPulse 1s ease-in-out infinite;
+    }
+    @keyframes recordPulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
+
+    /* Mouse cursor */
+    #demo-cursor {
+      position: absolute;
+      width: 18px; height: 18px;
+      pointer-events: none;
+      z-index: 100;
+      transition: none;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+    }
+    .cursor-click {
+      position: absolute;
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      border: 2px solid rgba(245,158,11,0.8);
+      pointer-events: none;
+      z-index: 99;
+      opacity: 0;
+      transform: scale(0.5);
+      transition: opacity 0.15s, transform 0.3s;
+    }
+    .cursor-click.pop { opacity: 1; transform: scale(1); }
+    .cursor-click.fade { opacity: 0; transform: scale(1.4); }
+
+    /* Recording indicator */
+    .rec-indicator {
+      position: absolute;
+      top: 10px; left: 12px;
+      background: rgba(15,17,23,0.85);
+      border: 1px solid #2d3350;
+      border-radius: 20px;
+      padding: 4px 10px;
+      font-size: 10px;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 15;
+      backdrop-filter: blur(4px);
+    }
+    .rec-indicator.show { opacity: 1; }
+    .rec-dot {
+      width: 6px; height: 6px; border-radius: 50%; background: #f87171;
+      animation: recBlink 1s step-end infinite;
+    }
+    @keyframes recBlink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* Event log panel */
+    .event-log {
+      background: #0d1117;
+      border-left: 1px solid #2d3350;
+      padding: 12px;
+      font-family: ui-monospace, monospace;
+      font-size: 10.5px;
+      overflow: hidden;
+      position: relative;
+    }
+    .event-log-header {
+      color: #64748b;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #1e2130;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .event-entry {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 4px 0;
+      border-bottom: 1px solid #1a2035;
+      opacity: 0;
+      transform: translateY(-4px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      line-height: 1.4;
+    }
+    .event-entry.in { opacity: 1; transform: translateY(0); }
+    .event-time { color: #334155; flex-shrink: 0; width: 38px; }
+    .event-type { flex-shrink: 0; width: 54px; }
+    .event-detail { color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ev-click  { color: #f59e0b; }
+    .ev-input  { color: #60a5fa; }
+    .ev-nav    { color: #34d399; }
+    .ev-error  { color: #f87171; }
+    .ev-upload { color: #a78bfa; }
+
+    /* Glow orb behind demo */
+    .demo-glow {
+      position: absolute;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(245,158,11,0.07) 0%, transparent 70%);
+      border-radius: 50%;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Nav ─────────────────────────────────────────────────────────────────── -->
+<nav class="sticky top-0 z-50 border-b border-[#2d3350] bg-[#0f1117]/90 backdrop-blur-sm">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <svg width="28" height="28" viewBox="0 0 64 64" fill="none">
+        <path d="M32 38 C24 38 14 44 4 40 C8 34 10 28 10 24 C10 20 8 16 4 14 C10 12 16 16 20 20 C22 16 24 10 32 8 C40 10 42 16 44 20 C48 16 54 12 60 14 C56 16 54 20 54 24 C54 28 56 34 60 40 C50 44 40 38 32 38Z" fill="#f59e0b"/>
+        <ellipse cx="22" cy="44" rx="6" ry="8" fill="#f59e0b"/>
+        <ellipse cx="42" cy="44" rx="6" ry="8" fill="#f59e0b"/>
+        <circle cx="26" cy="22" r="2.5" fill="#0f1117"/>
+        <circle cx="38" cy="22" r="2.5" fill="#0f1117"/>
+      </svg>
+      <span class="font-semibold text-white">BatRewind</span>
+    </div>
+    <div class="flex items-center gap-5">
+      <a href="#features" class="text-sm text-[#64748b] hover:text-white transition-colors hidden sm:block">Features</a>
+      <a href="#install"  class="text-sm text-[#64748b] hover:text-white transition-colors hidden sm:block">Install</a>
+      <a href="https://docs.batrewind.com" class="text-sm text-[#64748b] hover:text-white transition-colors hidden sm:block">Docs</a>
+      <a href="https://github.com/joaovrmoraes/batrewind" target="_blank" rel="noopener"
+         class="flex items-center gap-1.5 text-sm text-[#64748b] hover:text-white transition-colors">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+      <a href="#install" class="text-sm px-4 py-1.5 rounded-lg bg-[#f59e0b] text-[#0f1117] font-semibold hover:bg-[#d97706] transition-colors">
+        Get Started
+      </a>
+    </div>
+  </div>
+</nav>
+
+<!-- ── Hero ────────────────────────────────────────────────────────────────── -->
+<section class="max-w-7xl mx-auto px-6 pt-20 pb-16">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+
+    <!-- Left: copy -->
+    <div>
+      <div class="fu-1 flex items-center gap-3 mb-6">
+        <span class="badge text-[#f59e0b] border-[#f59e0b]/30 bg-[#f59e0b]/10">Self-Hosted</span>
+        <span class="badge text-[#34d399] border-[#34d399]/30 bg-[#34d399]/10">Open Source</span>
+        <span class="badge text-[#fb923c] border-[#fb923c]/30 bg-[#fb923c]/10">Zero Infra</span>
+      </div>
+
+      <h1 class="fu-2 text-4xl sm:text-5xl font-bold text-white leading-[1.15] mb-5">
+        See exactly what<br/>
+        your user did<br/>
+        <span class="gradient-text">before the error.</span>
+      </h1>
+
+      <p class="fu-3 text-[#94a3b8] text-lg leading-relaxed mb-8 max-w-md">
+        BatRewind records browser sessions automatically and replays them the moment an error happens.
+        Self-hosted, one-command deploy — no Kafka, no Kubernetes, no cloud bill.
+      </p>
+
+      <div class="fu-4 flex flex-col sm:flex-row gap-3 mb-10">
+        <a href="#install"
+           class="btn-pulse px-6 py-3 rounded-lg bg-[#f59e0b] text-[#0f1117] font-semibold hover:bg-[#d97706] transition-colors text-center">
+          Get Started →
+        </a>
+        <a href="https://github.com/joaovrmoraes/batrewind" target="_blank" rel="noopener"
+           class="px-6 py-3 rounded-lg border border-[#2d3350] text-[#94a3b8] font-semibold hover:border-[#f59e0b]/40 hover:text-white transition-colors text-center flex items-center justify-center gap-2">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+
+      <!-- Stats -->
+      <div class="fu-5 flex items-center gap-6 text-sm">
+        <div>
+          <div class="text-white font-bold text-xl">~2KB</div>
+          <div class="text-[#64748b]">SDK gzipped</div>
+        </div>
+        <div class="w-px h-8 bg-[#2d3350]"></div>
+        <div>
+          <div class="text-white font-bold text-xl">SQLite</div>
+          <div class="text-[#64748b]">No external DB</div>
+        </div>
+        <div class="w-px h-8 bg-[#2d3350]"></div>
+        <div>
+          <div class="text-white font-bold text-xl">MIT</div>
+          <div class="text-[#64748b]">Open source</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: live replay demo -->
+    <div class="fu-5 relative">
+      <div class="demo-glow"></div>
+      <div class="browser-chrome relative">
+
+        <!-- Browser bar -->
+        <div class="browser-bar">
+          <div class="browser-dots">
+            <span style="background:#f87171"></span>
+            <span style="background:#fbbf24"></span>
+            <span style="background:#34d399"></span>
+          </div>
+          <div class="browser-url">myapp.com/checkout</div>
+        </div>
+
+        <!-- Split: fake app + event log -->
+        <div style="display:flex; height:300px;">
+
+          <!-- Fake app -->
+          <div class="fake-app" style="flex:1; position:relative;">
+
+            <!-- Recording indicator -->
+            <div class="rec-indicator" id="recIndicator">
+              <div class="rec-dot"></div>
+              <span>REC</span>
+            </div>
+
+            <!-- Error toast -->
+            <div class="error-toast" id="errorToast">
+              <span class="error-toast-icon">⚠</span>
+              <div>
+                <div style="font-weight:700; margin-bottom:2px;">Payment failed</div>
+                <div style="color:#b91c1c; font-size:10px;">TypeError: Cannot read properties of undefined</div>
+              </div>
+            </div>
+
+            <!-- BatRewind widget -->
+            <div class="rwd-widget" id="rwdWidget">
+              <div class="rwd-widget-dot"></div>
+              Report a bug
+            </div>
+
+            <!-- Fake app UI -->
+            <div class="fake-nav">
+              <div class="fake-nav-logo">ShopApp</div>
+              <div class="fake-nav-links">
+                <span>Home</span><span>Cart</span><span style="color:#f8fafc; font-weight:600;">Checkout</span>
+              </div>
+            </div>
+
+            <div class="fake-body">
+              <div class="fake-card" id="fakeCard">
+                <div style="font-size:12px; font-weight:600; color:#1e293b; margin-bottom:10px;">Payment Details</div>
+                <div style="margin-bottom:8px;">
+                  <label style="font-size:10px; color:#64748b; display:block;">Card number</label>
+                  <input class="fake-input" id="fakeInput1" type="text" placeholder="1234 5678 9012 3456" readonly />
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <div style="flex:1;">
+                    <label style="font-size:10px; color:#64748b; display:block;">Expiry</label>
+                    <input class="fake-input" id="fakeInput2" type="text" placeholder="MM/YY" readonly />
+                  </div>
+                  <div style="flex:1;">
+                    <label style="font-size:10px; color:#64748b; display:block;">CVV</label>
+                    <input class="fake-input" id="fakeInput3" type="text" placeholder="•••" readonly />
+                  </div>
+                </div>
+                <button class="fake-btn" id="fakeBtn">Pay $129.00</button>
+              </div>
+            </div>
+
+            <!-- Cursor -->
+            <svg id="demo-cursor" width="18" height="18" viewBox="0 0 18 18" fill="none" style="left:80px;top:80px;">
+              <path d="M2 2L8 16L10.5 10.5L16 8L2 2Z" fill="white" stroke="#1e293b" stroke-width="1.2"/>
+            </svg>
+            <div class="cursor-click" id="cursorClick"></div>
+          </div>
+
+          <!-- Event log -->
+          <div class="event-log" style="width:200px; overflow-y:hidden;">
+            <div class="event-log-header">
+              <span>Events</span>
+              <span id="eventCount" style="color:#f59e0b;">0</span>
+            </div>
+            <div id="eventList"></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── How it works ─────────────────────────────────────────────────────────── -->
+<section class="border-y border-[#2d3350] py-16 bg-[#1e2130]/30">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="reveal text-center mb-12">
+      <p class="text-xs text-[#64748b] uppercase tracking-widest mb-2">How it works</p>
+      <h2 class="text-2xl font-bold text-white">From error to replay in seconds</h2>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-0 reveal">
+      <div class="text-center p-8 relative">
+        <div class="w-12 h-12 rounded-full bg-[#f59e0b]/10 border border-[#f59e0b]/20 flex items-center justify-center text-xl mx-auto mb-4">🔴</div>
+        <div class="text-xs text-[#f59e0b] font-semibold uppercase tracking-wider mb-2">1 — Record</div>
+        <p class="text-sm text-[#64748b] leading-relaxed">SDK keeps a circular buffer of the last 30–60s. Always recording, never sending noise.</p>
+        <div class="hidden sm:block absolute top-10 right-0 text-[#2d3350] text-2xl">→</div>
+      </div>
+      <div class="text-center p-8 relative">
+        <div class="w-12 h-12 rounded-full bg-[#f87171]/10 border border-[#f87171]/20 flex items-center justify-center text-xl mx-auto mb-4">⚡</div>
+        <div class="text-xs text-[#f87171] font-semibold uppercase tracking-wider mb-2">2 — Capture</div>
+        <p class="text-sm text-[#64748b] leading-relaxed">Error detected. Buffer flushes to the backend automatically — or the user hits "Report a bug".</p>
+        <div class="hidden sm:block absolute top-10 right-0 text-[#2d3350] text-2xl">→</div>
+      </div>
+      <div class="text-center p-8">
+        <div class="w-12 h-12 rounded-full bg-[#34d399]/10 border border-[#34d399]/20 flex items-center justify-center text-xl mx-auto mb-4">▶</div>
+        <div class="text-xs text-[#34d399] font-semibold uppercase tracking-wider mb-2">3 — Replay</div>
+        <p class="text-sm text-[#64748b] leading-relaxed">Open the dashboard, hit play. See exactly what the user did — DOM, network, console, all in sync.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Features ───────────────────────────────────────────────────────────── -->
+<section id="features" class="max-w-6xl mx-auto px-6 py-20">
+  <div class="reveal text-center mb-12">
+    <h2 class="text-2xl font-bold text-white mb-3">Everything you need for session replay</h2>
+    <p class="text-[#64748b]">Without the cloud bill.</p>
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div class="feat-card card p-6 space-y-3">
+      <div class="w-9 h-9 rounded-lg bg-[#f59e0b]/10 flex items-center justify-center text-lg">🎬</div>
+      <h3 class="font-semibold text-white">DOM Recording</h3>
+      <p class="text-sm text-[#64748b] leading-relaxed">rrweb captures every click, scroll, input, and navigation. Pixel-perfect replay without screenshots.</p>
+    </div>
+    <div class="feat-card card p-6 space-y-3" style="transition-delay:0.07s">
+      <div class="w-9 h-9 rounded-lg bg-[#f87171]/10 flex items-center justify-center text-lg">⚡</div>
+      <h3 class="font-semibold text-white">Error-triggered upload</h3>
+      <p class="text-sm text-[#64748b] leading-relaxed">Circular buffer records the last 30–60s. Sends automatically only when an error is detected. No noise.</p>
+    </div>
+    <div class="feat-card card p-6 space-y-3" style="transition-delay:0.14s">
+      <div class="w-9 h-9 rounded-lg bg-[#34d399]/10 flex items-center justify-center text-lg">🐛</div>
+      <h3 class="font-semibold text-white">User reports</h3>
+      <p class="text-sm text-[#64748b] leading-relaxed">Floating widget in Shadow DOM. User types a title, hits send. Replay + report land together in your dashboard.</p>
+    </div>
+    <div class="feat-card card p-6 space-y-3" style="transition-delay:0.21s">
+      <div class="w-9 h-9 rounded-lg bg-[#60a5fa]/10 flex items-center justify-center text-lg">🌐</div>
+      <h3 class="font-semibold text-white">Network capture</h3>
+      <p class="text-sm text-[#64748b] leading-relaxed">Every request logged, including canceled and aborted. Synced with the replay timeline.</p>
+    </div>
+    <div class="feat-card card p-6 space-y-3" style="transition-delay:0.28s">
+      <div class="w-9 h-9 rounded-lg bg-[#fb923c]/10 flex items-center justify-center text-lg">🖥️</div>
+      <h3 class="font-semibold text-white">Console capture</h3>
+      <p class="text-sm text-[#64748b] leading-relaxed">log, warn, error captured via rrweb console plugin. Click an error to jump to that moment in the replay.</p>
+    </div>
+    <div class="feat-card card p-6 space-y-3" style="transition-delay:0.35s">
+      <div class="w-9 h-9 rounded-lg bg-[#2dd4bf]/10 flex items-center justify-center text-lg">🚀</div>
+      <h3 class="font-semibold text-white">One-command deploy</h3>
+      <p class="text-sm text-[#64748b] leading-relaxed">SQLite + local filesystem. No Redis, no PostgreSQL, no Kafka. Runs comfortably on a $6 VPS.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── Comparison ──────────────────────────────────────────────────────────── -->
+<section class="border-y border-[#2d3350] py-16">
+  <div class="max-w-5xl mx-auto px-6">
+    <div class="reveal text-center mb-10">
+      <p class="text-xs text-[#64748b] uppercase tracking-widest mb-2">Why BatRewind</p>
+      <h2 class="text-xl font-bold text-white">Session replay without the enterprise overhead</h2>
+    </div>
+    <div class="card overflow-hidden reveal">
+      <div class="grid grid-cols-5 border-b border-[#2d3350] bg-[#0f1117]/50">
+        <div class="p-4 text-xs text-[#64748b] uppercase tracking-wider">Feature</div>
+        <div class="p-4 text-center"><span class="text-sm font-semibold text-[#f59e0b]">BatRewind</span></div>
+        <div class="p-4 text-center"><span class="text-sm font-semibold text-[#64748b]">OpenReplay</span></div>
+        <div class="p-4 text-center"><span class="text-sm font-semibold text-[#64748b]">FullStory</span></div>
+        <div class="p-4 text-center"><span class="text-sm font-semibold text-[#64748b]">LogRocket</span></div>
+      </div>
+      <div class="cmp-row grid grid-cols-5 border-b border-[#2d3350]/60 hover:bg-[#f59e0b]/5 transition-colors" style="transition-delay:0s">
+        <div class="p-4 text-sm text-[#94a3b8]">Session replay</div>
+        <div class="p-4 text-center"><span class="check">✓</span></div><div class="p-4 text-center"><span class="check">✓</span></div><div class="p-4 text-center"><span class="check">✓</span></div><div class="p-4 text-center"><span class="check">✓</span></div>
+      </div>
+      <div class="cmp-row grid grid-cols-5 border-b border-[#2d3350]/60 hover:bg-[#f59e0b]/5 transition-colors" style="transition-delay:0.07s">
+        <div class="p-4 text-sm text-[#94a3b8]">Self-hosted</div>
+        <div class="p-4 text-center"><span class="check">✓</span></div><div class="p-4 text-center"><span class="check">✓</span></div><div class="p-4 text-center"><span class="cross">✗</span></div><div class="p-4 text-center"><span class="cross">✗</span></div>
+      </div>
+      <div class="cmp-row grid grid-cols-5 border-b border-[#2d3350]/60 hover:bg-[#f59e0b]/5 transition-colors" style="transition-delay:0.14s">
+        <div class="p-4 text-sm text-[#94a3b8]">One-command deploy</div>
+        <div class="p-4 text-center"><span class="check">✓</span></div><div class="p-4 text-center"><span class="cross">✗</span></div><div class="p-4 text-center"><span class="cross">✗</span></div><div class="p-4 text-center"><span class="cross">✗</span></div>
+      </div>
+      <div class="cmp-row grid grid-cols-5 border-b border-[#2d3350]/60 hover:bg-[#f59e0b]/5 transition-colors" style="transition-delay:0.21s">
+        <div class="p-4 text-sm text-[#94a3b8]">No Kafka / no k8s</div>
+        <div class="p-4 text-center"><span class="check">✓</span></div><div class="p-4 text-center"><span class="cross">✗</span></div><div class="p-4 text-center"><span class="cross">✗</span></div><div class="p-4 text-center"><span class="cross">✗</span></div>
+      </div>
+      <div class="cmp-row grid grid-cols-5 border-b border-[#2d3350]/60 hover:bg-[#f59e0b]/5 transition-colors" style="transition-delay:0.28s">
+        <div class="p-4 text-sm text-[#94a3b8]">Open source</div>
+        <div class="p-4 text-center"><span class="check">✓</span></div><div class="p-4 text-center"><span class="check">✓</span></div><div class="p-4 text-center"><span class="cross">✗</span></div><div class="p-4 text-center"><span class="cross">✗</span></div>
+      </div>
+      <div class="cmp-row grid grid-cols-5 border-b border-[#2d3350]/60 hover:bg-[#f59e0b]/5 transition-colors" style="transition-delay:0.35s">
+        <div class="p-4 text-sm text-[#94a3b8]">BatAudit integration</div>
+        <div class="p-4 text-center"><span class="check">✓</span></div><div class="p-4 text-center"><span class="cross">✗</span></div><div class="p-4 text-center"><span class="cross">✗</span></div><div class="p-4 text-center"><span class="cross">✗</span></div>
+      </div>
+      <div class="cmp-row grid grid-cols-5 hover:bg-[#f59e0b]/5 transition-colors" style="transition-delay:0.42s">
+        <div class="p-4 text-sm text-[#94a3b8]">Price</div>
+        <div class="p-4 text-center"><span class="text-[#34d399] text-sm font-semibold">Free</span></div>
+        <div class="p-4 text-center"><span class="text-[#fb923c] text-xs font-medium">Free (heavy infra)</span></div>
+        <div class="p-4 text-center"><span class="text-[#f87171] text-xs font-medium">$$$</span></div>
+        <div class="p-4 text-center"><span class="text-[#f87171] text-xs font-medium">$$$</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Install ─────────────────────────────────────────────────────────────── -->
+<section id="install" class="max-w-6xl mx-auto px-6 py-20">
+  <div class="reveal text-center mb-10">
+    <h2 class="text-2xl font-bold text-white mb-3">One command to start</h2>
+    <p class="text-[#64748b]">Docker Compose is the only prerequisite.</p>
+  </div>
+  <div class="max-w-2xl mx-auto space-y-6">
+    <div class="reveal space-y-2" style="transition-delay:0.05s">
+      <p class="text-sm text-[#64748b] font-medium">1. Clone the repository</p>
+      <pre class="p-4"><code class="text-[#34d399]">git clone https://github.com/joaovrmoraes/batrewind.git
+cd batrewind</code></pre>
+    </div>
+    <div class="reveal space-y-2" style="transition-delay:0.1s">
+      <p class="text-sm text-[#64748b] font-medium">2. Start the stack</p>
+      <pre class="p-4"><code class="text-[#34d399]">docker compose up</code></pre>
+      <p class="text-xs text-[#475569]">Dashboard: <code>http://localhost:8080/app</code></p>
+    </div>
+    <div class="reveal space-y-2" style="transition-delay:0.15s">
+      <p class="text-sm text-[#64748b] font-medium">3. Add the SDK to your app</p>
+      <pre class="p-4" id="tw-pre"><code id="tw-code" class="text-[#f59e0b]"></code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ─────────────────────────────────────────────────────────────── -->
+<footer class="border-t border-[#2d3350] mt-8">
+  <div class="max-w-6xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+    <div class="flex items-center gap-2">
+      <div class="w-6 h-6 rounded bg-[#f59e0b] flex items-center justify-center font-bold text-xs text-[#0f1117]">B</div>
+      <span class="text-sm text-[#64748b]">BatRewind — MIT License</span>
+    </div>
+    <div class="flex items-center gap-6 text-sm text-[#64748b]">
+      <a href="https://github.com/joaovrmoraes/batrewind" target="_blank" rel="noopener" class="hover:text-white transition-colors">GitHub</a>
+      <a href="https://github.com/joaovrmoraes/batrewind/issues" target="_blank" rel="noopener" class="hover:text-white transition-colors">Issues</a>
+      <a href="https://bataudit.com" target="_blank" rel="noopener" class="hover:text-white transition-colors">BatAudit ↗</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ── Scripts ─────────────────────────────────────────────────────────────── -->
+<script>
+(function () {
+
+  // ── Scroll reveal ────────────────────────────────────────────────────────
+  const revealObs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); revealObs.unobserve(e.target); } });
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
+
+  const cardObs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); cardObs.unobserve(e.target); } });
+  }, { threshold: 0.08 });
+  document.querySelectorAll('.feat-card').forEach(el => cardObs.observe(el));
+
+  const cmpObs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); cmpObs.unobserve(e.target); } });
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.cmp-row').forEach(el => cmpObs.observe(el));
+
+  // ── Typewriter ───────────────────────────────────────────────────────────
+  const twTarget = `npm install @batrewind/browser
+
+import { BatRewind } from '@batrewind/browser'
+
+BatRewind.init({
+  apiKey: 'rwd_your_api_key',
+  endpoint: 'http://localhost:8080',
+  bufferSeconds: 60,
+  widget: {
+    position: 'bottom-right',
+    buttonLabel: 'Report a bug'
+  }
+})`;
+
+  const twCode = document.getElementById('tw-code');
+  let twDone = false;
+  function runTypewriter() {
+    if (twDone) return; twDone = true;
+    const cursor = document.createElement('span');
+    cursor.className = 'tw-cursor';
+    twCode.appendChild(cursor);
+    let i = 0;
+    function type() {
+      if (i < twTarget.length) { cursor.before(document.createTextNode(twTarget[i++])); setTimeout(type, 16); }
+      else { setTimeout(() => cursor.remove(), 900); }
+    }
+    type();
+  }
+  const twObs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { runTypewriter(); twObs.unobserve(e.target); } });
+  }, { threshold: 0.5 });
+  const twPre = document.getElementById('tw-pre');
+  if (twPre) twObs.observe(twPre);
+
+  // ── Session replay demo ──────────────────────────────────────────────────
+  const cursor    = document.getElementById('demo-cursor');
+  const clickRing = document.getElementById('cursorClick');
+  const recInd    = document.getElementById('recIndicator');
+  const errToast  = document.getElementById('errorToast');
+  const rwdWidget = document.getElementById('rwdWidget');
+  const eventList = document.getElementById('eventList');
+  const eventCount= document.getElementById('eventCount');
+  const input1    = document.getElementById('fakeInput1');
+  const input2    = document.getElementById('fakeInput2');
+  const input3    = document.getElementById('fakeInput3');
+  const fakeBtn   = document.getElementById('fakeBtn');
+
+  let evCount = 0;
+  const fakeApp = cursor.parentElement;
+
+  function getRect() { return fakeApp.getBoundingClientRect(); }
+
+  // Smooth cursor movement using bezier-like interpolation
+  let curX = 80, curY = 80;
+  let targetX = 80, targetY = 80;
+  let animFrame;
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function animateCursor() {
+    curX = lerp(curX, targetX, 0.1);
+    curY = lerp(curY, targetY, 0.1);
+    cursor.style.left = curX + 'px';
+    cursor.style.top  = curY + 'px';
+    animFrame = requestAnimationFrame(animateCursor);
+  }
+  animateCursor();
+
+  function moveTo(x, y, ms) {
+    return new Promise(r => {
+      targetX = x; targetY = y;
+      setTimeout(r, ms);
+    });
+  }
+
+  function clickAt(x, y) {
+    clickRing.style.left = (x - 14) + 'px';
+    clickRing.style.top  = (y - 14) + 'px';
+    clickRing.classList.remove('pop','fade');
+    void clickRing.offsetWidth;
+    clickRing.classList.add('pop');
+    setTimeout(() => { clickRing.classList.remove('pop'); clickRing.classList.add('fade'); }, 120);
+    setTimeout(() => clickRing.classList.remove('fade'), 420);
+  }
+
+  function addEvent(type, detail, cls) {
+    evCount++;
+    eventCount.textContent = evCount;
+    const ts = (evCount * 0.4).toFixed(1) + 's';
+    const entry = document.createElement('div');
+    entry.className = 'event-entry';
+    entry.innerHTML = `<span class="event-time">${ts}</span><span class="event-type ${cls}">${type}</span><span class="event-detail">${detail}</span>`;
+    // Keep max 9 entries visible
+    while (eventList.children.length >= 9) eventList.removeChild(eventList.firstChild);
+    eventList.appendChild(entry);
+    requestAnimationFrame(() => entry.classList.add('in'));
+  }
+
+  function typeInto(input, text, msPerChar) {
+    return new Promise(resolve => {
+      input.classList.add('focused');
+      let i = 0;
+      function next() {
+        if (i < text.length) {
+          input.value += text[i++];
+          addEvent('input', input.placeholder || 'field', 'ev-input');
+          setTimeout(next, msPerChar);
+        } else {
+          input.classList.remove('focused');
+          resolve();
+        }
+      }
+      setTimeout(next, 150);
+    });
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // Get position of element relative to fakeApp
+  function elPos(el) {
+    const appRect = fakeApp.getBoundingClientRect();
+    const elRect  = el.getBoundingClientRect();
+    return {
+      x: elRect.left - appRect.left + elRect.width / 2,
+      y: elRect.top  - appRect.top  + elRect.height / 2
+    };
+  }
+
+  async function runDemo() {
+    // Reset
+    input1.value = ''; input2.value = ''; input3.value = '';
+    fakeBtn.textContent = 'Pay $129.00';
+    fakeBtn.className = 'fake-btn';
+    errToast.classList.remove('show');
+    rwdWidget.classList.remove('show');
+    recInd.classList.remove('show');
+    evCount = 0; eventCount.textContent = '0';
+    eventList.innerHTML = '';
+
+    await sleep(800);
+
+    // REC starts
+    recInd.classList.add('show');
+    addEvent('nav', '/checkout', 'ev-nav');
+    await sleep(400);
+
+    // Move to card number field
+    let p = elPos(input1);
+    await moveTo(p.x - 40, p.y - 20, 900);
+    await moveTo(p.x, p.y, 400);
+    clickAt(p.x, p.y);
+    addEvent('click', 'card input', 'ev-click');
+    await sleep(300);
+    await typeInto(input1, '4242 4242 4242 4242', 60);
+    await sleep(200);
+
+    // Move to expiry
+    p = elPos(input2);
+    await moveTo(p.x - 30, p.y, 600);
+    await moveTo(p.x, p.y, 300);
+    clickAt(p.x, p.y);
+    addEvent('click', 'expiry input', 'ev-click');
+    await sleep(200);
+    await typeInto(input2, '12/28', 80);
+    await sleep(150);
+
+    // Move to CVV
+    p = elPos(input3);
+    await moveTo(p.x - 20, p.y, 500);
+    await moveTo(p.x, p.y, 300);
+    clickAt(p.x, p.y);
+    addEvent('click', 'cvv input', 'ev-click');
+    await sleep(200);
+    await typeInto(input3, '123', 100);
+    await sleep(400);
+
+    // Move to pay button
+    p = elPos(fakeBtn);
+    await moveTo(p.x - 60, p.y + 10, 700);
+    await moveTo(p.x, p.y, 400);
+    await sleep(300);
+
+    // Click pay
+    clickAt(p.x, p.y);
+    addEvent('click', 'Pay $129.00', 'ev-click');
+    fakeBtn.textContent = 'Processing…';
+    fakeBtn.style.opacity = '0.7';
+    await sleep(1200);
+
+    // Error!
+    fakeBtn.textContent = 'Failed';
+    fakeBtn.className = 'fake-btn error-state';
+    fakeBtn.style.opacity = '1';
+    addEvent('error', 'TypeError: undefined', 'ev-error');
+    addEvent('error', 'payment.js:142', 'ev-error');
+    errToast.classList.add('show');
+    await sleep(600);
+
+    // BatRewind widget appears
+    addEvent('upload', 'buffer → server', 'ev-upload');
+    rwdWidget.classList.add('show');
+    await sleep(600);
+
+    // Move cursor to widget
+    const wRect = rwdWidget.getBoundingClientRect();
+    const appRect = fakeApp.getBoundingClientRect();
+    const wx = wRect.left - appRect.left + wRect.width / 2;
+    const wy = wRect.top  - appRect.top  + wRect.height / 2;
+    await moveTo(wx - 30, wy - 10, 800);
+    await moveTo(wx, wy, 400);
+    await sleep(400);
+    clickAt(wx, wy);
+    addEvent('report', 'user sent', 'ev-upload');
+
+    await sleep(3000);
+
+    // Loop
+    runDemo();
+  }
+
+  // Start after a short delay
+  setTimeout(runDemo, 1200);
+
+})();
+</script>
+
+</body>
+</html>
