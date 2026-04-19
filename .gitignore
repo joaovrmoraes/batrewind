@@ -1,0 +1,17 @@
+# Binaries (root-level only)
+/writer
+/reader
+/worker
+bin/
+
+# Environment
+.env
+*.env
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# OS
+.DS_Store

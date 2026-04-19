@@ -1,0 +1,93 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: batrewind
+      POSTGRES_PASSWORD: batrewind
+      POSTGRES_DB: batrewind
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "batrewind"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  writer:
+    build:
+      context: .
+      dockerfile: cmd/writer/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      DB_DRIVER: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: batrewind
+      DB_PASSWORD: batrewind
+      DB_NAME: batrewind
+      REDIS_ADDR: redis:6379
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      INITIAL_OWNER_EMAIL: ${INITIAL_OWNER_EMAIL:-admin@batrewind.local}
+      INITIAL_OWNER_PASSWORD: ${INITIAL_OWNER_PASSWORD:-admin123}
+      INITIAL_OWNER_NAME: ${INITIAL_OWNER_NAME:-Admin}
+      WRITER_PORT: 8080
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  reader:
+    build:
+      context: .
+      dockerfile: cmd/reader/Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      DB_DRIVER: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: batrewind
+      DB_PASSWORD: batrewind
+      DB_NAME: batrewind
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      READER_PORT: 8081
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: cmd/worker/Dockerfile
+    environment:
+      DB_DRIVER: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: batrewind
+      DB_PASSWORD: batrewind
+      DB_NAME: batrewind
+      REDIS_ADDR: redis:6379
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
