@@ -2,11 +2,20 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getSession } from '@/http/sessions/get'
 import { getSessionEvents } from '@/http/sessions/events'
 import { listSessions } from '@/http/sessions/list'
+import { getStats } from '@/http/sessions/stats'
 import {
   listFailedIngest,
   retryAllFailed,
 } from '@/http/sessions/failed-ingest'
 import type { SessionFilters } from '@/http/sessions/types'
+
+export function useStats() {
+  return useQuery({
+    queryKey: ['stats'],
+    queryFn: getStats,
+    refetchInterval: 30_000,
+  })
+}
 
 export function useSessions(filters: SessionFilters = {}) {
   return useQuery({

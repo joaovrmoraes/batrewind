@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Film, LayoutDashboard } from 'lucide-react'
+import { Film, LayoutDashboard, MonitorPlay } from 'lucide-react'
 
 interface NavItemProps {
   to: string
@@ -44,7 +44,8 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 px-2 py-4 space-y-0.5">
-        <NavItem to="/app/" icon={LayoutDashboard} label="Sessions" exact />
+        <NavItem to="/app/" icon={LayoutDashboard} label="Overview" exact />
+        <NavItem to="/app/sessions" icon={MonitorPlay} label="Sessions" />
       </nav>
     </aside>
   )

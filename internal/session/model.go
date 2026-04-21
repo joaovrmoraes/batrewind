@@ -85,3 +85,13 @@ type FailedIngest struct {
 }
 
 func (FailedIngest) TableName() string { return "failed_ingest" }
+
+// Stats is returned by GET /v1/stats.
+type Stats struct {
+	TotalSessions     int64           `json:"total_sessions"`
+	SessionsToday     int64           `json:"sessions_today"`
+	SessionsThisWeek  int64           `json:"sessions_this_week"`
+	FailedIngestCount int64           `json:"failed_ingest_count"`
+	ActiveServices    []string        `json:"active_services"`
+	RecentSessions    []ReplaySession `json:"recent_sessions"`
+}

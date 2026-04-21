@@ -84,6 +84,50 @@ func (r *Repository) GetEvents(sessionID string) ([]ReplayEvent, error) {
 	return events, err
 }
 
+func (r *Repository) GetStats() (*Stats, error) {
+	var stats Stats
+
+	now := time.Now().UTC()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	weekStart := todayStart.AddDate(0, 0, -6)
+
+	if err := r.db.Model(&ReplaySession{}).Count(&stats.TotalSessions).Error; err != nil {
+		return nil, err
+	}
+	if err := r.db.Model(&ReplaySession{}).
+		Where("started_at >= ?", todayStart).
+		Count(&stats.SessionsToday).Error; err != nil {
+		return nil, err
+	}
+	if err := r.db.Model(&ReplaySession{}).
+		Where("started_at >= ?", weekStart).
+		Count(&stats.SessionsThisWeek).Error; err != nil {
+		return nil, err
+	}
+	if err := r.db.Model(&FailedIngest{}).
+		Where("resolved = false").
+		Count(&stats.FailedIngestCount).Error; err != nil {
+		return nil, err
+	}
+
+	var services []string
+	if err := r.db.Model(&ReplaySession{}).
+		Distinct("service_name").
+		Pluck("service_name", &services).Error; err != nil {
+		return nil, err
+	}
+	stats.ActiveServices = services
+
+	if err := r.db.Model(&ReplaySession{}).
+		Order("started_at DESC").
+		Limit(5).
+		Find(&stats.RecentSessions).Error; err != nil {
+		return nil, err
+	}
+
+	return &stats, nil
+}
+
 // --- FailedIngest ---
 
 func (r *Repository) SaveFailed(f *FailedIngest) error {

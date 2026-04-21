@@ -103,7 +103,7 @@ function PlayerPage() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => navigate({ to: '/app' })}
+          onClick={() => navigate({ to: '/app/sessions' })}
           className="gap-2"
         >
           <ArrowLeft className="h-4 w-4" />

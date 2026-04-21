@@ -17,12 +17,22 @@ func NewReaderHandler(svc *Service) *ReaderHandler {
 }
 
 func (h *ReaderHandler) RegisterRoutes(r *gin.RouterGroup) {
+	r.GET("/stats", h.GetStats)
 	r.GET("/sessions", h.List)
 	r.GET("/sessions/:id", h.GetByID)
 	r.GET("/sessions/:id/events", h.GetEvents)
 	r.GET("/failed-ingest", h.ListFailed)
 	r.POST("/failed-ingest/:id/retry", h.RetryFailed)
 	r.POST("/failed-ingest/retry-all", h.RetryAll)
+}
+
+func (h *ReaderHandler) GetStats(c *gin.Context) {
+	stats, err := h.svc.GetStats()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, stats)
 }
 
 func (h *ReaderHandler) List(c *gin.Context) {

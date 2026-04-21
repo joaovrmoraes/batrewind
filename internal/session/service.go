@@ -16,6 +16,7 @@ type repository interface {
 	List(f ListFilter) ([]ReplaySession, int64, error)
 	GetByID(id string) (*ReplaySession, error)
 	GetEvents(sessionID string) ([]ReplayEvent, error)
+	GetStats() (*Stats, error)
 	SaveFailed(f *FailedIngest) error
 	ListFailed(onlyUnresolved bool) ([]FailedIngest, error)
 	GetFailed(id string) (*FailedIngest, error)
@@ -95,6 +96,10 @@ func (s *Service) GetByID(id string) (*ReplaySession, error) {
 
 func (s *Service) GetEvents(sessionID string) ([]ReplayEvent, error) {
 	return s.repo.GetEvents(sessionID)
+}
+
+func (s *Service) GetStats() (*Stats, error) {
+	return s.repo.GetStats()
 }
 
 func (s *Service) SaveFailed(f *FailedIngest) error {

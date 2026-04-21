@@ -1,55 +1,20 @@
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
-import { useSessions } from '@/queries/sessions'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useStats } from '@/queries/sessions'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import {
+  Activity,
+  AlertTriangle,
   Clock,
   Globe,
   MonitorPlay,
-  Search,
-  SlidersHorizontal,
+  Server,
   User,
 } from 'lucide-react'
-import React from 'react'
-import { z } from 'zod'
-
-const LIMIT = 20
-
-const searchSchema = z.object({
-  identifier: z.string().optional(),
-  service_name: z.string().optional(),
-  environment: z.string().optional(),
-  page: z.number().optional().default(1),
-})
 
 export const Route = createFileRoute('/app/_layout/')({
-  validateSearch: searchSchema,
-  component: SessionsPage,
+  component: DashboardPage,
 })
-
-const ENVIRONMENTS = [
-  'production',
-  'staging',
-  'development',
-  'testing',
-  'local',
-]
-
-const ENV_COLORS: Record<string, string> = {
-  production: 'text-[#34d399]',
-  staging: 'text-[#60a5fa]',
-  development: 'text-[#818cf8]',
-  testing: 'text-[#fb923c]',
-  local: 'text-muted-foreground',
-}
 
 function formatDuration(ms: number | null): string {
   if (!ms) return '—'
@@ -69,275 +34,195 @@ function formatTime(iso: string): string {
   })
 }
 
-function SessionsPage() {
-  const navigate = useNavigate({ from: '/app/' })
-  const search = Route.useSearch()
-
-  const [identifier, setIdentifier] = React.useState(
-    search.identifier ?? ''
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  highlight,
+}: {
+  label: string
+  value: string | number
+  icon: React.ElementType
+  highlight?: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            {label}
+          </CardTitle>
+          <Icon
+            className={`h-4 w-4 ${highlight ? 'text-destructive' : 'text-muted-foreground'}`}
+          />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p
+          className={`text-3xl font-bold ${highlight ? 'text-destructive' : 'text-foreground'}`}
+        >
+          {value}
+        </p>
+      </CardContent>
+    </Card>
   )
-  const [serviceName, setServiceName] = React.useState(
-    search.service_name ?? ''
-  )
-  const [environment, setEnvironment] = React.useState(
-    search.environment ?? ''
-  )
-  const [showFilters, setShowFilters] = React.useState(false)
+}
 
-  const page = search.page ?? 1
-  const offset = (page - 1) * LIMIT
-
-  const { data, isLoading } = useSessions({
-    identifier: search.identifier,
-    service_name: search.service_name,
-    environment: search.environment,
-    limit: LIMIT,
-    offset,
-  })
-
-  const sessions = data?.data ?? []
-  const total = data?.total ?? 0
-  const totalPages = Math.ceil(total / LIMIT)
-
-  function applyFilters(e: React.FormEvent) {
-    e.preventDefault()
-    navigate({
-      search: {
-        identifier: identifier || undefined,
-        service_name: serviceName || undefined,
-        environment: environment || undefined,
-        page: 1,
-      },
-    })
-  }
-
-  function clearFilters() {
-    setIdentifier('')
-    setServiceName('')
-    setEnvironment('')
-    navigate({ search: { page: 1 } })
-  }
-
-  const hasActiveFilters =
-    search.identifier || search.service_name || search.environment
+function DashboardPage() {
+  const navigate = useNavigate()
+  const { data: stats, isLoading } = useStats()
 
   return (
-    <div className="p-6 space-y-5">
-      {/* Header row */}
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Sessions</h1>
-          {total > 0 && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {total} session{total !== 1 ? 's' : ''}
-            </p>
-          )}
-        </div>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowFilters(v => !v)}
-          className="gap-2"
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          Filters
-          {hasActiveFilters && (
-            <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
-          )}
-        </Button>
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-xl font-semibold text-foreground">Overview</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Session replay metrics
+        </p>
       </div>
 
-      {/* Filters */}
-      {showFilters && (
-        <form
-          onSubmit={applyFilters}
-          className="bg-card border border-border rounded-lg p-4 space-y-3"
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Identifier
-              </label>
-              <Input
-                placeholder="user@example.com or ID"
-                value={identifier}
-                onChange={e => setIdentifier(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Service
-              </label>
-              <Input
-                placeholder="web, app, ..."
-                value={serviceName}
-                onChange={e => setServiceName(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Environment
-              </label>
-              <select
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] dark:bg-input/30"
-                value={environment}
-                onChange={e => setEnvironment(e.target.value)}
-              >
-                <option value="">All</option>
-                {ENVIRONMENTS.map(env => (
-                  <option key={env} value={env}>
-                    {env}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="flex gap-2 pt-1">
-            <Button type="submit" size="sm" className="gap-2">
-              <Search className="h-3.5 w-3.5" />
-              Apply
-            </Button>
-            {hasActiveFilters && (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={clearFilters}
-              >
-                Clear
-              </Button>
-            )}
-          </div>
-        </form>
-      )}
-
-      {/* Sessions list */}
-      {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => (
             <div
               key={i}
-              className="h-20 rounded-lg bg-card border border-border animate-pulse"
+              className="h-28 rounded-xl bg-card border border-border animate-pulse"
             />
-          ))}
-        </div>
-      ) : sessions.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <MonitorPlay className="h-10 w-10 text-muted-foreground/40 mb-3" />
-          <p className="text-sm text-muted-foreground">No sessions found</p>
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              className="text-xs text-primary mt-1 hover:underline"
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {sessions.map(session => (
-            <button
-              key={session.id}
-              type="button"
-              onClick={() =>
-                navigate({ to: '/app/sessions/$id', params: { id: session.id } })
-              }
-              className="w-full text-left bg-card border border-border rounded-lg px-4 py-3 hover:border-primary/50 hover:bg-card/80 transition-colors group"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 space-y-1">
-                  {/* Identifier + service */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+          ))
+        ) : (
+          <>
+            <StatCard
+              label="Total sessions"
+              value={stats?.total_sessions ?? 0}
+              icon={MonitorPlay}
+            />
+            <StatCard
+              label="Today"
+              value={stats?.sessions_today ?? 0}
+              icon={Activity}
+            />
+            <StatCard
+              label="This week"
+              value={stats?.sessions_this_week ?? 0}
+              icon={Clock}
+            />
+            <StatCard
+              label="Failed ingests"
+              value={stats?.failed_ingest_count ?? 0}
+              icon={AlertTriangle}
+              highlight={(stats?.failed_ingest_count ?? 0) > 0}
+            />
+          </>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Recent sessions */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader className="border-b border-border pb-4">
+              <CardTitle className="text-sm font-medium">
+                Recent sessions
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {isLoading ? (
+                <div className="p-4 space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-12 rounded bg-secondary animate-pulse"
+                    />
+                  ))}
+                </div>
+              ) : !stats?.recent_sessions?.length ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <MonitorPlay className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    No sessions yet
+                  </p>
+                </div>
+              ) : (
+                stats.recent_sessions.map(session => (
+                  <button
+                    key={session.id}
+                    type="button"
+                    onClick={() =>
+                      navigate({
+                        to: '/app/sessions/$id',
+                        params: { id: session.id },
+                      })
+                    }
+                    className="w-full flex items-center justify-between px-6 py-3 border-b border-border/50 last:border-0 hover:bg-secondary/30 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
                       <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      {session.identifier || session.id.slice(0, 8)}
-                    </span>
-                    <Badge variant="secondary" className="text-xs">
-                      {session.service_name}
-                    </Badge>
-                    {session.environment && (
-                      <span
-                        className={`text-xs ${ENV_COLORS[session.environment] ?? ''}`}
-                      >
-                        {session.environment}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* URL */}
-                  {session.start_url && (
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Globe className="h-3 w-3 shrink-0" />
-                      <span className="truncate max-w-xs">
-                        {session.start_url}
-                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm text-foreground truncate">
+                          {session.identifier || session.id.slice(0, 8)}
+                        </p>
+                        {session.start_url && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Globe className="h-3 w-3 shrink-0" />
+                            <span className="truncate max-w-[200px]">
+                              {session.start_url}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
-
-                {/* Meta */}
-                <div className="shrink-0 text-right space-y-1">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground justify-end">
-                    <Clock className="h-3 w-3" />
-                    {formatDuration(session.duration_ms)}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {formatTime(session.started_at)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {session.event_count} events
-                  </p>
-                </div>
-              </div>
-            </button>
-          ))}
+                    <div className="shrink-0 text-right ml-4">
+                      <p className="text-xs text-muted-foreground">
+                        {formatTime(session.started_at)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDuration(session.duration_ms)}
+                      </p>
+                    </div>
+                  </button>
+                ))
+              )}
+            </CardContent>
+          </Card>
         </div>
-      )}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <Pagination>
-          <PaginationContent>
-            <PaginationItem>
-              <PaginationPrevious
-                onClick={() =>
-                  navigate({
-                    search: prev => ({ ...prev, page: Math.max(1, page - 1) }),
-                  })
-                }
-                aria-disabled={page <= 1}
-                className={page <= 1 ? 'pointer-events-none opacity-50' : ''}
-              />
-            </PaginationItem>
-            <PaginationItem>
-              <span className="px-3 text-sm text-muted-foreground">
-                {page} / {totalPages}
-              </span>
-            </PaginationItem>
-            <PaginationItem>
-              <PaginationNext
-                onClick={() =>
-                  navigate({
-                    search: prev => ({
-                      ...prev,
-                      page: Math.min(totalPages, page + 1),
-                    }),
-                  })
-                }
-                aria-disabled={page >= totalPages}
-                className={
-                  page >= totalPages ? 'pointer-events-none opacity-50' : ''
-                }
-              />
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
-      )}
+        {/* Active services */}
+        <div>
+          <Card>
+            <CardHeader className="border-b border-border pb-4">
+              <div className="flex items-center gap-2">
+                <Server className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">
+                  Active services
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-4">
+              {isLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-6 rounded bg-secondary animate-pulse"
+                    />
+                  ))}
+                </div>
+              ) : !stats?.active_services?.length ? (
+                <p className="text-sm text-muted-foreground">No services yet</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {stats.active_services.map(svc => (
+                    <Badge key={svc} variant="secondary">
+                      {svc}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }

@@ -42,6 +42,15 @@ export interface SessionListResponse {
   offset: number
 }
 
+export interface Stats {
+  total_sessions: number
+  sessions_today: number
+  sessions_this_week: number
+  failed_ingest_count: number
+  active_services: string[]
+  recent_sessions: ReplaySession[]
+}
+
 export interface SessionFilters {
   identifier?: string
   service_name?: string
