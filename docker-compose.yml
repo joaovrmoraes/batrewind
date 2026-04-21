@@ -88,6 +88,15 @@ services:
       redis:
         condition: service_healthy
 
+  dashboard:
+    build:
+      context: ./packages/dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - reader
+
 volumes:
   postgres_data:
   redis_data:
