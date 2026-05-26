@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BatRewind — Playground</title>
+  <meta name="description" content="Test the BatRewind SDK in action. Interact, break things, find your session in the dashboard." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg:      '#0f1117',
+            surface: '#1e2130',
+            border:  '#2d3350',
+            muted:   '#64748b',
+            primary: '#f59e0b',
+            green:   '#34d399',
+            red:     '#f87171',
+            orange:  '#fb923c',
+            blue:    '#60a5fa',
+          },
+        },
+      },
+    }
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: #0f1117;
+      color: #e2e8f0;
+      font-family: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Noise + Grid overlay ───────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(245,158,11,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(245,158,11,0.025) 1px, transparent 1px);
+      background-size: 72px 72px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    main, nav, footer { position: relative; z-index: 1; }
+
+    /* ── Typography ─────────────────────────────────────────── */
+    .font-display { font-family: 'Syne', sans-serif; }
+    .font-mono    { font-family: 'JetBrains Mono', monospace; }
+
+    .gradient-text {
+      background: linear-gradient(135deg, #f59e0b, #fb923c);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ── Cards ──────────────────────────────────────────────── */
+    .card {
+      background: #1e2130;
+      border: 1px solid #2d3350;
+      border-radius: 0.75rem;
+    }
+    .card-hover {
+      transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
+    }
+    .card-hover:hover {
+      border-color: rgba(245,158,11,0.35);
+      box-shadow: 0 0 28px rgba(245,158,11,0.07);
+      transform: translateY(-2px);
+    }
+
+    /* ── Animations ─────────────────────────────────────────── */
+    @keyframes navDown {
+      from { transform: translateY(-100%); opacity: 0; }
+      to   { transform: translateY(0);     opacity: 1; }
+    }
+    nav { animation: navDown 0.5s cubic-bezier(0.16,1,0.3,1) forwards; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(28px); }
+      to   { opacity: 1; transform: translateY(0);    }
+    }
+    .fu-1 { animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.05s; }
+    .fu-2 { animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.2s;  }
+    .fu-3 { animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.35s; }
+    .fu-4 { animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.5s;  }
+    .fu-5 { animation: fadeUp 0.8s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.65s; }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(36px);
+      transition: opacity 0.65s cubic-bezier(0.16,1,0.3,1), transform 0.65s cubic-bezier(0.16,1,0.3,1);
+    }
+    .reveal.in { opacity: 1; transform: translateY(0); }
+
+    @keyframes pulseAmber {
+      0%   { box-shadow: 0 0 0 0   rgba(245,158,11,0.55); }
+      70%  { box-shadow: 0 0 0 14px rgba(245,158,11,0);    }
+      100% { box-shadow: 0 0 0 0   rgba(245,158,11,0);     }
+    }
+    .btn-pulse { animation: pulseAmber 2.5s ease-out infinite; }
+
+    @keyframes recPulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.25; }
+    }
+    .rec-dot { animation: recPulse 1.4s ease-in-out infinite; }
+
+    @keyframes amberBreath {
+      0%, 100% { box-shadow: 0 0 0 1px rgba(245,158,11,0.15), 0 0 40px rgba(245,158,11,0.05); }
+      50%       { box-shadow: 0 0 0 1px rgba(245,158,11,0.3),  0 0 60px rgba(245,158,11,0.12); }
+    }
+    .demo-frame { animation: amberBreath 4s ease-in-out infinite; }
+
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%      { transform: translateX(-6px); }
+      40%      { transform: translateX(6px); }
+      60%      { transform: translateX(-4px); }
+      80%      { transform: translateX(4px); }
+    }
+    .shake { animation: shake 0.4s ease; }
+
+    /* ── Inputs ─────────────────────────────────────────────── */
+    .pg-input {
+      background: #0f1117;
+      border: 1px solid #2d3350;
+      border-radius: 0.5rem;
+      padding: 0.6rem 0.875rem;
+      color: #e2e8f0;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.875rem;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .pg-input:focus {
+      border-color: #f59e0b;
+      box-shadow: 0 0 0 3px rgba(245,158,11,0.1);
+    }
+    .pg-input::placeholder { color: #475569; }
+
+    /* ── Tabs ───────────────────────────────────────────────── */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Badge ──────────────────────────────────────────────── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      padding: 0.18rem 0.6rem;
+      border-radius: 9999px;
+      font-size: 0.7rem; font-weight: 500;
+      border: 1px solid;
+    }
+
+    /* ── Success overlay ────────────────────────────────────── */
+    .success-overlay {
+      position: fixed; inset: 0;
+      background: rgba(10,11,16,0.97);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 2000;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+    .success-overlay.show { opacity: 1; pointer-events: all; }
+
+    /* ── Toast ──────────────────────────────────────────────── */
+    .toast {
+      position: fixed;
+      bottom: 28px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      border-radius: 10px;
+      padding: 12px 20px;
+      display: flex; align-items: center; gap: 10px;
+      font-size: 0.8rem;
+      z-index: 900;
+      opacity: 0;
+      transition: all 0.35s cubic-bezier(0.16,1,0.3,1);
+      white-space: nowrap;
+      backdrop-filter: blur(8px);
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── Fake app inside browser chrome ─────────────────────── */
+    .fake-input {
+      width: 100%; border: 1px solid #e2e8f0; border-radius: 5px;
+      padding: 7px 10px; font-size: 12px; color: #1e293b;
+      background: #f8fafc; outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .fake-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+    .fake-btn {
+      background: #3b82f6; color: white; border: none;
+      border-radius: 6px; padding: 8px 18px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .fake-btn:hover { background: #2563eb; }
+
+    /* Number tabular */
+    .tabnum { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     NAV
+════════════════════════════════════════════════════════════ -->
+<nav style="position:sticky;top:0;z-index:100;border-bottom:1px solid #2d3350;background:rgba(15,17,23,0.88);backdrop-filter:blur(14px);">
+  <div style="max-width:1024px;margin:0 auto;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+
+    <!-- Logo -->
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:30px;height:30px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.2);border-radius:8px;display:flex;align-items:center;justify-content:center;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </div>
+      <span class="font-display" style="font-weight:700;font-size:0.88rem;color:#f1f5f9;letter-spacing:-0.01em;">BatRewind</span>
+      <span class="font-mono" style="font-size:0.65rem;color:#64748b;padding:2px 8px;border:1px solid #2d3350;border-radius:9999px;letter-spacing:0.04em;">playground</span>
+    </div>
+
+    <!-- Recording indicator -->
+    <div id="recIndicator" style="display:flex;align-items:center;gap:8px;opacity:0;transition:opacity 0.5s;">
+      <div class="rec-dot" style="width:7px;height:7px;background:#f87171;border-radius:50%;"></div>
+      <span class="font-mono" style="font-size:0.7rem;color:#94a3b8;letter-spacing:0.06em;">REC</span>
+      <span style="width:1px;height:12px;background:#2d3350;"></span>
+      <span id="recTimer" class="font-mono tabnum" style="font-size:0.7rem;color:#f59e0b;min-width:3ch;">0s</span>
+    </div>
+
+    <!-- Session ID chip -->
+    <div id="sessionChip" style="display:flex;align-items:center;gap:6px;opacity:0;transition:opacity 0.5s 0.15s;">
+      <span style="font-size:0.68rem;color:#64748b;">your ID:</span>
+      <span id="navId" class="font-mono" style="font-size:0.72rem;color:#f59e0b;padding:3px 10px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:9999px;"></span>
+    </div>
+  </div>
+</nav>
+
+<main>
+<!-- ═══════════════════════════════════════════════════════════
+     HERO
+════════════════════════════════════════════════════════════ -->
+<section style="max-width:1024px;margin:0 auto;padding:72px 24px 56px;text-align:center;">
+
+  <div class="fu-1" style="display:inline-flex;align-items:center;gap:8px;margin-bottom:24px;padding:5px 16px;border:1px solid rgba(245,158,11,0.22);border-radius:9999px;background:rgba(245,158,11,0.05);">
+    <div class="rec-dot" style="width:6px;height:6px;background:#f59e0b;border-radius:50%;"></div>
+    <span class="font-mono" style="font-size:0.65rem;color:#f59e0b;letter-spacing:0.1em;">SDK ACTIVE — LIVE SESSION</span>
+  </div>
+
+  <h1 class="fu-2 font-display" style="font-size:clamp(2.4rem,5.5vw,3.8rem);font-weight:800;line-height:1.08;letter-spacing:-0.025em;margin-bottom:20px;">
+    Break things.<br><span class="gradient-text">Watch the replay.</span>
+  </h1>
+
+  <p class="fu-3" style="font-size:1.05rem;color:#94a3b8;max-width:500px;margin:0 auto 40px;line-height:1.75;">
+    The BatRewind SDK is recording this page right now. Use the panels below, simulate an error, report a bug — then find your session in the dashboard.
+  </p>
+
+  <!-- Identifier card -->
+  <div class="fu-4 card" style="display:inline-block;padding:20px 24px;text-align:left;min-width:380px;max-width:460px;">
+    <p class="font-mono" style="font-size:0.65rem;color:#64748b;letter-spacing:0.08em;margin-bottom:10px;">SESSION IDENTIFIER</p>
+
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+      <div id="idBadge" class="font-mono" style="flex:1;padding:9px 13px;background:#0f1117;border:1px solid rgba(245,158,11,0.28);border-radius:0.5rem;font-size:0.85rem;color:#f59e0b;letter-spacing:0.02em;"></div>
+      <button onclick="regenerateId()" title="Generate new ID"
+        style="padding:9px;background:#1a1f2e;border:1px solid #2d3350;border-radius:0.5rem;color:#475569;cursor:pointer;transition:color 0.2s,border-color 0.2s;"
+        onmouseover="this.style.color='#f59e0b';this.style.borderColor='rgba(245,158,11,0.3)'"
+        onmouseout="this.style.color='#475569';this.style.borderColor='#2d3350'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+      </button>
+    </div>
+
+    <p style="font-size:0.7rem;color:#475569;margin-bottom:8px;">or use your name / email:</p>
+    <input id="customIdInput" class="pg-input" type="text" placeholder="e.g. john@company.com" oninput="applyCustomId(this.value)" />
+  </div>
+
+  <!-- Scroll hint -->
+  <div class="fu-5" style="margin-top:48px;display:flex;flex-direction:column;align-items:center;gap:6px;color:#475569;">
+    <span style="font-size:0.72rem;letter-spacing:0.06em;">SCROLL TO INTERACT</span>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     DEMO APP — browser chrome + tabs
+════════════════════════════════════════════════════════════ -->
+<section style="max-width:1024px;margin:0 auto;padding:0 24px 80px;">
+  <div class="reveal demo-frame" style="border:1px solid rgba(245,158,11,0.15);border-radius:14px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,0.5);">
+
+    <!-- Browser bar -->
+    <div style="background:#161b27;border-bottom:1px solid #2d3350;padding:10px 16px;display:flex;align-items:center;gap:10px;">
+      <div style="display:flex;gap:5px;">
+        <span style="width:10px;height:10px;border-radius:50%;background:#f87171;display:block;"></span>
+        <span style="width:10px;height:10px;border-radius:50%;background:#fbbf24;display:block;"></span>
+        <span style="width:10px;height:10px;border-radius:50%;background:#34d399;display:block;"></span>
+      </div>
+      <div class="font-mono" style="flex:1;background:#0f1117;border:1px solid #2d3350;border-radius:5px;padding:4px 10px;font-size:11px;color:#475569;">
+        app.acmecorp.com/dashboard
+      </div>
+      <div class="font-mono" style="font-size:10px;color:#34d399;display:flex;align-items:center;gap:4px;">
+        <div class="rec-dot" style="width:5px;height:5px;background:#34d399;border-radius:50%;"></div>
+        recording
+      </div>
+    </div>
+
+    <!-- App tabs -->
+    <div style="background:#1a1f2e;border-bottom:1px solid #2d3350;padding:0 20px;display:flex;gap:0;">
+      <button class="tab-btn" data-tab="home"     onclick="switchTab('home',this)"     style="padding:11px 18px;font-size:12.5px;color:#f59e0b;border:none;border-bottom:2px solid #f59e0b;background:transparent;cursor:pointer;font-family:'Outfit',sans-serif;font-weight:500;transition:color 0.2s;">Home</button>
+      <button class="tab-btn" data-tab="profile"  onclick="switchTab('profile',this)"  style="padding:11px 18px;font-size:12.5px;color:#64748b;border:none;border-bottom:2px solid transparent;background:transparent;cursor:pointer;font-family:'Outfit',sans-serif;font-weight:500;transition:color 0.2s;">Profile</button>
+      <button class="tab-btn" data-tab="checkout" onclick="switchTab('checkout',this)" style="padding:11px 18px;font-size:12.5px;color:#64748b;border:none;border-bottom:2px solid transparent;background:transparent;cursor:pointer;font-family:'Outfit',sans-serif;font-weight:500;transition:color 0.2s;">Plans</button>
+      <button class="tab-btn" data-tab="settings" onclick="switchTab('settings',this)" style="padding:11px 18px;font-size:12.5px;color:#64748b;border:none;border-bottom:2px solid transparent;background:transparent;cursor:pointer;font-family:'Outfit',sans-serif;font-weight:500;transition:color 0.2s;">Settings</button>
+    </div>
+
+    <!-- ── Tab: Home ───────────────────────────────────────── -->
+    <div id="tab-home" class="tab-panel active" style="background:#f8fafc;padding:24px;min-height:320px;">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;">
+        <div onclick="cardClick(this)" style="background:white;border:1px solid #e2e8f0;border-radius:8px;padding:16px;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s,border-color 0.2s;" onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,0.09)';this.style.borderColor='#93c5fd'" onmouseout="this.style.boxShadow='';this.style.borderColor='#e2e8f0'">
+          <p style="font-size:10.5px;color:#94a3b8;margin-bottom:6px;">Total revenue</p>
+          <p style="font-size:22px;font-weight:700;color:#1e293b;">$24,890</p>
+          <p style="font-size:10px;color:#34d399;margin-top:4px;">▲ 12.4% vs last month</p>
+        </div>
+        <div onclick="cardClick(this)" style="background:white;border:1px solid #e2e8f0;border-radius:8px;padding:16px;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s,border-color 0.2s;" onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,0.09)';this.style.borderColor='#93c5fd'" onmouseout="this.style.boxShadow='';this.style.borderColor='#e2e8f0'">
+          <p style="font-size:10.5px;color:#94a3b8;margin-bottom:6px;">Orders</p>
+          <p style="font-size:22px;font-weight:700;color:#1e293b;">1,247</p>
+          <p style="font-size:10px;color:#34d399;margin-top:4px;">▲ 8.1% vs last month</p>
+        </div>
+        <div onclick="cardClick(this)" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;" onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,0.09)'" onmouseout="this.style.boxShadow=''">
+          <p style="font-size:10.5px;color:#94a3b8;margin-bottom:6px;">Detected errors</p>
+          <p style="font-size:22px;font-weight:700;color:#ef4444;">3</p>
+          <p style="font-size:10px;color:#ef4444;margin-top:4px;">▼ needs attention</p>
+        </div>
+      </div>
+      <div style="background:white;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+        <p style="font-size:12px;font-weight:600;color:#1e293b;margin-bottom:10px;">Recent activity</p>
+        <div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:12px;">
+            <span style="color:#475569;">Order #4821 — Alice Johnson</span>
+            <span style="color:#34d399;font-weight:600;">$189.90</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:12px;">
+            <span style="color:#475569;">Order #4820 — Bob Carter</span>
+            <span style="color:#34d399;font-weight:600;">$340.00</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:12px;">
+            <span style="color:#475569;">Order #4819 — Carol Smith</span>
+            <span style="color:#ef4444;font-weight:600;">Payment failed</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Tab: Profile ───────────────────────────────────── -->
+    <div id="tab-profile" class="tab-panel" style="background:#f8fafc;padding:24px;min-height:320px;">
+      <div style="background:white;border:1px solid #e2e8f0;border-radius:8px;padding:20px;max-width:420px;">
+        <p style="font-size:13px;font-weight:600;color:#1e293b;margin-bottom:16px;">Edit profile</p>
+        <div style="margin-bottom:11px;">
+          <label style="font-size:11px;color:#64748b;display:block;margin-bottom:3px;">Full name</label>
+          <input type="text" value="Alice Johnson" class="fake-input" />
+        </div>
+        <div style="margin-bottom:11px;">
+          <label style="font-size:11px;color:#64748b;display:block;margin-bottom:3px;">Email</label>
+          <input type="email" value="alice@acme.com" class="fake-input" />
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:11px;color:#64748b;display:block;margin-bottom:3px;">Department</label>
+          <select class="fake-input">
+            <option>Product</option><option>Engineering</option><option>Design</option><option>Sales</option>
+          </select>
+        </div>
+        <button id="saveBtn" onclick="saveProfile()" class="fake-btn">Save changes</button>
+      </div>
+    </div>
+
+    <!-- ── Tab: Checkout ──────────────────────────────────── -->
+    <div id="tab-checkout" class="tab-panel" style="background:#f8fafc;padding:24px;min-height:320px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:500px;">
+        <div style="background:white;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+          <div style="width:38px;height:38px;background:#eff6ff;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+          </div>
+          <p style="font-size:12px;font-weight:600;color:#1e293b;">Pro Plan</p>
+          <p style="font-size:18px;font-weight:700;color:#1e293b;margin:4px 0;">$49<span style="font-size:11px;font-weight:400;color:#64748b;">/mo</span></p>
+          <button onclick="selectPlan(this)" class="fake-btn" style="width:100%;margin-top:10px;font-size:11.5px;">Select</button>
+        </div>
+        <div style="background:white;border:2px solid #f59e0b;border-radius:8px;padding:16px;position:relative;">
+          <div style="position:absolute;top:-10px;right:12px;background:#f59e0b;color:#0f1117;font-size:10px;font-weight:700;padding:2px 8px;border-radius:9999px;">POPULAR</div>
+          <div style="width:38px;height:38px;background:#fffbeb;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </div>
+          <p style="font-size:12px;font-weight:600;color:#1e293b;">Enterprise</p>
+          <p style="font-size:18px;font-weight:700;color:#1e293b;margin:4px 0;">$149<span style="font-size:11px;font-weight:400;color:#64748b;">/mo</span></p>
+          <button onclick="selectPlan(this)" class="fake-btn" style="width:100%;margin-top:10px;background:#f59e0b;font-size:11.5px;" onmouseover="this.style.background='#d97706'" onmouseout="this.style.background='#f59e0b'">Select</button>
+        </div>
+      </div>
+      <div id="planMsg" style="display:none;margin-top:14px;padding:11px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:12px;color:#166534;max-width:500px;">
+        ✓ Plan selected! Redirecting to checkout...
+      </div>
+    </div>
+
+    <!-- ── Tab: Settings ─────────────────────────────────── -->
+    <div id="tab-settings" class="tab-panel" style="background:#f8fafc;padding:24px;min-height:320px;">
+      <div style="background:white;border:1px solid #e2e8f0;border-radius:8px;padding:20px;max-width:420px;">
+        <p style="font-size:13px;font-weight:600;color:#1e293b;margin-bottom:14px;">Settings</p>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f1f5f9;">
+          <div>
+            <p style="font-size:12px;font-weight:500;color:#1e293b;">Email notifications</p>
+            <p style="font-size:11px;color:#64748b;margin-top:1px;">Order and error alerts</p>
+          </div>
+          <label style="position:relative;display:inline-block;width:36px;height:20px;cursor:pointer;">
+            <input type="checkbox" checked onchange="toggleSwitch(this)" style="opacity:0;width:0;height:0;position:absolute;">
+            <span class="sw-track" style="position:absolute;inset:0;background:#3b82f6;border-radius:20px;transition:0.3s;">
+              <span class="sw-knob" style="position:absolute;width:14px;height:14px;left:3px;top:3px;background:white;border-radius:50%;transition:0.3s;transform:translateX(16px);display:block;"></span>
+            </span>
+          </label>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;">
+          <div>
+            <p style="font-size:12px;font-weight:500;color:#1e293b;">Weekly reports</p>
+            <p style="font-size:11px;color:#64748b;margin-top:1px;">Metrics digest by email</p>
+          </div>
+          <label style="position:relative;display:inline-block;width:36px;height:20px;cursor:pointer;">
+            <input type="checkbox" onchange="toggleSwitch(this)" style="opacity:0;width:0;height:0;position:absolute;">
+            <span class="sw-track" style="position:absolute;inset:0;background:#cbd5e1;border-radius:20px;transition:0.3s;">
+              <span class="sw-knob" style="position:absolute;width:14px;height:14px;left:3px;top:3px;background:white;border-radius:50%;transition:0.3s;display:block;"></span>
+            </span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end demo-frame -->
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     ACTIONS
+════════════════════════════════════════════════════════════ -->
+<section style="max-width:1024px;margin:0 auto;padding:0 24px 100px;">
+  <div class="reveal" style="text-align:center;margin-bottom:40px;">
+    <p class="font-mono" style="font-size:0.65rem;color:#f59e0b;letter-spacing:0.1em;margin-bottom:8px;">TEST ACTIONS</p>
+    <h2 class="font-display" style="font-size:1.8rem;font-weight:700;color:#f1f5f9;letter-spacing:-0.02em;">Break something</h2>
+    <p style="font-size:0.9rem;color:#64748b;margin-top:8px;">The SDK captures everything — errors, clicks, scrolls, inputs.</p>
+  </div>
+
+  <div class="reveal" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:640px;margin:0 auto;">
+
+    <!-- Simulate error -->
+    <div class="card card-hover" style="padding:28px;text-align:center;border-color:rgba(248,113,113,0.15);">
+      <div style="width:48px;height:48px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <p class="font-display" style="font-size:0.95rem;font-weight:600;color:#f1f5f9;margin-bottom:6px;">Simulate error</p>
+      <p style="font-size:0.75rem;color:#64748b;line-height:1.6;margin-bottom:20px;">Fires a <code class="font-mono" style="font-size:0.7rem;color:#94a3b8;">console.error</code> + <code class="font-mono" style="font-size:0.7rem;color:#94a3b8;">throw</code>. The SDK captures it automatically.</p>
+      <button id="errorBtn" onclick="simulateError()"
+        style="width:100%;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.28);color:#f87171;border-radius:8px;padding:10px 16px;font-size:0.8rem;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:'Outfit',sans-serif;"
+        onmouseover="this.style.background='rgba(248,113,113,0.18)'"
+        onmouseout="this.style.background='rgba(248,113,113,0.1)'">
+        Trigger error
+      </button>
+    </div>
+
+    <!-- Manual report -->
+    <div class="card card-hover" style="padding:28px;text-align:center;border-color:rgba(245,158,11,0.15);">
+      <div style="width:48px;height:48px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </div>
+      <p class="font-display" style="font-size:0.95rem;font-weight:600;color:#f1f5f9;margin-bottom:6px;">Report bug</p>
+      <p style="font-size:0.75rem;color:#64748b;line-height:1.6;margin-bottom:20px;">Calls <code class="font-mono" style="font-size:0.7rem;color:#94a3b8;">BatRewind.report()</code> — same as the floating widget button.</p>
+      <button onclick="triggerReport()" class="btn-pulse"
+        style="width:100%;background:#f59e0b;border:none;color:#0f1117;border-radius:8px;padding:10px 16px;font-size:0.8rem;font-weight:700;cursor:pointer;transition:background 0.2s;font-family:'Outfit',sans-serif;"
+        onmouseover="this.style.background='#fbbf24'"
+        onmouseout="this.style.background='#f59e0b'">
+        Report now
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     HOW IT WORKS
+════════════════════════════════════════════════════════════ -->
+<section style="max-width:1024px;margin:0 auto;padding:0 24px 120px;">
+  <div class="reveal" style="text-align:center;margin-bottom:40px;">
+    <p class="font-mono" style="font-size:0.65rem;color:#f59e0b;letter-spacing:0.1em;margin-bottom:8px;">HOW IT WORKS</p>
+    <h2 class="font-display" style="font-size:1.8rem;font-weight:700;color:#f1f5f9;letter-spacing:-0.02em;">From click to replay</h2>
+  </div>
+
+  <div class="reveal" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+    <div class="card" style="padding:24px;">
+      <p class="font-mono" style="font-size:1.8rem;font-weight:700;color:rgba(245,158,11,0.2);margin-bottom:14px;">01</p>
+      <p class="font-display" style="font-size:0.9rem;font-weight:600;color:#f1f5f9;margin-bottom:8px;">SDK records everything</p>
+      <p style="font-size:0.78rem;color:#64748b;line-height:1.65;">Every click, scroll, input, and error is captured by rrweb and sent in batches to the backend.</p>
+    </div>
+    <div class="card" style="padding:24px;">
+      <p class="font-mono" style="font-size:1.8rem;font-weight:700;color:rgba(245,158,11,0.2);margin-bottom:14px;">02</p>
+      <p class="font-display" style="font-size:0.9rem;font-weight:600;color:#f1f5f9;margin-bottom:8px;">Search by ID</p>
+      <p style="font-size:0.78rem;color:#64748b;line-height:1.65;">In the dashboard, filter sessions by your identifier. Your session shows up with all recorded events.</p>
+    </div>
+    <div class="card" style="padding:24px;">
+      <p class="font-mono" style="font-size:1.8rem;font-weight:700;color:rgba(245,158,11,0.2);margin-bottom:14px;">03</p>
+      <p class="font-display" style="font-size:0.9rem;font-weight:600;color:#f1f5f9;margin-bottom:8px;">Pixel-perfect replay</p>
+      <p style="font-size:0.78rem;color:#64748b;line-height:1.65;">Watch an exact reproduction of what happened on the page, with a synchronized event timeline.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SUCCESS OVERLAY
+════════════════════════════════════════════════════════════ -->
+<div id="successOverlay" class="success-overlay">
+  <div style="text-align:center;max-width:460px;padding:32px 24px;">
+
+    <div style="width:72px;height:72px;background:rgba(245,158,11,0.1);border:2px solid rgba(245,158,11,0.3);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 24px;">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+
+    <p class="font-mono" style="font-size:0.65rem;color:#f59e0b;letter-spacing:0.1em;margin-bottom:8px;">SESSION SENT</p>
+
+    <h2 class="font-display" style="font-size:2.2rem;font-weight:800;letter-spacing:-0.025em;color:#f1f5f9;margin-bottom:12px;">
+      Bug reported!
+    </h2>
+
+    <p style="font-size:0.95rem;color:#94a3b8;line-height:1.75;margin-bottom:28px;">
+      Your session was recorded and sent. Search for the identifier below in the dashboard to find it.
+    </p>
+
+    <div style="background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.2);border-radius:12px;padding:16px 20px;margin-bottom:28px;">
+      <p class="font-mono" style="font-size:0.62rem;color:#64748b;letter-spacing:0.08em;margin-bottom:6px;">YOUR IDENTIFIER</p>
+      <p id="successId" class="font-mono" style="font-size:1.2rem;font-weight:600;color:#f59e0b;word-break:break-all;"></p>
+    </div>
+
+    <button onclick="closeOverlay()"
+      style="background:#1e2130;border:1px solid #2d3350;color:#94a3b8;border-radius:8px;padding:10px 28px;font-size:0.85rem;cursor:pointer;font-family:'Outfit',sans-serif;transition:all 0.2s;"
+      onmouseover="this.style.borderColor='rgba(245,158,11,0.4)';this.style.color='#f59e0b'"
+      onmouseout="this.style.borderColor='#2d3350';this.style.color='#94a3b8'">
+      Close
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     TOASTS
+════════════════════════════════════════════════════════════ -->
+<div id="errorToast" class="toast" style="background:#1e2130;border:1px solid rgba(248,113,113,0.35);color:#fca5a5;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+  <span style="font-size:1rem;">⚠</span>
+  <span>Error captured by the SDK — session flagged automatically</span>
+</div>
+
+<div id="saveToast" class="toast" style="background:#1e2130;border:1px solid rgba(52,211,153,0.35);color:#6ee7b7;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+  <span style="font-size:1rem;">✓</span>
+  <span>Profile saved successfully</span>
+</div>
+
+<!-- ─── Config (API key injected at runtime by nginx entrypoint) ─── -->
+<script src="/config.js" onerror="void 0"></script>
+<!-- ─── SDK UMD ──────────────────────────────────────────────────── -->
+<script src="/sdk/batrewind.umd.js"></script>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// IDENTIFIER
+// ════════════════════════════════════════════════════════════
+const ADJECTIVES = ['bold','swift','calm','dark','wild','keen','deep','firm','warm','cold','bright','sharp','silent','brave','stark'];
+const NOUNS      = ['tiger','falcon','stone','river','storm','ember','pixel','ghost','forge','spark','comet','prism','nova','orbit'];
+
+function generateId() {
+  const adj  = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
+  const hex  = Math.random().toString(16).slice(2, 6);
+  return `${adj}-${noun}-${hex}`;
+}
+
+let visitorId = localStorage.getItem('brw_pg_id') || generateId();
+localStorage.setItem('brw_pg_id', visitorId);
+
+function refreshIdDisplay() {
+  document.getElementById('idBadge').textContent = visitorId;
+  document.getElementById('navId').textContent   = visitorId;
+}
+refreshIdDisplay();
+
+// Restore custom if set
+const savedCustom = localStorage.getItem('brw_pg_custom');
+if (savedCustom) {
+  visitorId = savedCustom;
+  document.getElementById('customIdInput').value = savedCustom;
+  refreshIdDisplay();
+}
+
+function regenerateId() {
+  localStorage.removeItem('brw_pg_custom');
+  document.getElementById('customIdInput').value = '';
+  visitorId = generateId();
+  localStorage.setItem('brw_pg_id', visitorId);
+  refreshIdDisplay();
+  // Blink the badge
+  const badge = document.getElementById('idBadge');
+  badge.style.borderColor = '#f59e0b';
+  setTimeout(() => { badge.style.borderColor = 'rgba(245,158,11,0.28)'; }, 600);
+}
+
+function applyCustomId(val) {
+  const trimmed = val.trim();
+  if (trimmed) {
+    visitorId = trimmed;
+    localStorage.setItem('brw_pg_custom', trimmed);
+  } else {
+    visitorId = localStorage.getItem('brw_pg_id') || generateId();
+    localStorage.removeItem('brw_pg_custom');
+  }
+  refreshIdDisplay();
+}
+
+// ════════════════════════════════════════════════════════════
+// SDK INIT
+// ════════════════════════════════════════════════════════════
+let sdkReady = false;
+
+function initSDK() {
+  if (typeof BatRewind === 'undefined') {
+    console.warn('[playground] BatRewind SDK not loaded — running in demo mode');
+    showRecordingUI();
+    return;
+  }
+
+  BatRewind.init({
+    endpoint:       window.location.origin,
+    apiKey:         window.__PLAYGROUND_API_KEY__ || 'rew_playground_demo',
+    serviceName:    'playground',
+    environment:    'demo',
+    identifier:     visitorId,
+    showWidget:     true,
+    widgetLabel:    'Report bug',
+    batchIntervalMs: 5000,
+    batchMaxBytes:  300_000,
+  });
+
+  sdkReady = true;
+  showRecordingUI();
+  trackEvents();
+}
+
+function showRecordingUI() {
+  document.getElementById('recIndicator').style.opacity = '1';
+  document.getElementById('sessionChip').style.opacity  = '1';
+}
+
+function trackEvents() {
+  const start = Date.now()
+  const el = document.getElementById('recTimer')
+  setInterval(() => {
+    const s = Math.floor((Date.now() - start) / 1000)
+    el.textContent = s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${s % 60}s`
+  }, 1000)
+}
+
+setTimeout(initSDK, 200);
+
+// ════════════════════════════════════════════════════════════
+// TABS
+// ════════════════════════════════════════════════════════════
+let activeTab = 'home';
+
+function switchTab(name, btn) {
+  document.getElementById('tab-' + activeTab).classList.remove('active');
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.style.color       = '#64748b';
+    b.style.borderBottom = '2px solid transparent';
+  });
+  activeTab = name;
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.style.color       = '#f59e0b';
+  btn.style.borderBottom = '2px solid #f59e0b';
+}
+
+// ════════════════════════════════════════════════════════════
+// FAKE APP INTERACTIONS
+// ════════════════════════════════════════════════════════════
+function cardClick(el) {
+  el.style.transform = 'scale(0.95)';
+  setTimeout(() => { el.style.transform = ''; }, 120);
+}
+
+function saveProfile() {
+  const btn = document.getElementById('saveBtn');
+  btn.textContent       = '✓ Saved!';
+  btn.style.background  = '#34d399';
+  showToast('saveToast');
+  setTimeout(() => {
+    btn.textContent      = 'Save changes';
+    btn.style.background = '#3b82f6';
+  }, 2500);
+}
+
+function selectPlan(btn) {
+  const msg = document.getElementById('planMsg');
+  msg.style.display = 'block';
+  btn.textContent = '✓ Selected';
+  setTimeout(() => {
+    msg.style.display = 'none';
+    btn.textContent = 'Select';
+  }, 2500);
+}
+
+function toggleSwitch(input) {
+  const track = input.nextElementSibling;
+  const knob  = track.querySelector('.sw-knob');
+  if (input.checked) {
+    track.style.background  = '#3b82f6';
+    knob.style.transform    = 'translateX(16px)';
+  } else {
+    track.style.background  = '#cbd5e1';
+    knob.style.transform    = 'translateX(0)';
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// SIMULATE ERROR
+// ════════════════════════════════════════════════════════════
+function simulateError() {
+  const btn = document.getElementById('errorBtn');
+  btn.disabled    = true;
+  btn.textContent = 'Triggering...';
+
+  setTimeout(() => {
+    try {
+      console.error('[BatRewind Playground] Simulated error — TypeError: Cannot read properties of undefined (reading "data")');
+      const obj = undefined;
+      void obj.data; // triggers real error
+    } catch (e) {
+      // SDK console plugin captured it
+    }
+
+    showToast('errorToast');
+
+    setTimeout(() => {
+      btn.disabled    = false;
+      btn.textContent = 'Trigger again';
+    }, 3200);
+  }, 350);
+}
+
+// ════════════════════════════════════════════════════════════
+// REPORT
+// ════════════════════════════════════════════════════════════
+function triggerReport() {
+  if (sdkReady && typeof BatRewind !== 'undefined') {
+    BatRewind.report();
+  }
+  // Always show overlay (even in demo mode without SDK)
+  showSuccessOverlay();
+}
+
+function showSuccessOverlay() {
+  document.getElementById('successId').textContent = visitorId;
+  document.getElementById('successOverlay').classList.add('show');
+}
+
+function closeOverlay() {
+  document.getElementById('successOverlay').classList.remove('show');
+}
+
+// ════════════════════════════════════════════════════════════
+// TOASTS
+// ════════════════════════════════════════════════════════════
+function showToast(id) {
+  const el = document.getElementById(id);
+  el.classList.add('show');
+  setTimeout(() => { el.classList.remove('show'); }, 3500);
+}
+
+// ════════════════════════════════════════════════════════════
+// SCROLL REVEAL
+// ════════════════════════════════════════════════════════════
+const io = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+  });
+}, { threshold: 0.1 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+</script>
+</body>
+</html>

@@ -1,3 +1,14 @@
+# One-command demo: backend + dashboard + playground
+# Usage: docker compose -f docker-compose.demo.yml up --build
+#
+# No seed data — interact with the playground to generate real sessions.
+#
+# URLs:
+#   Playground  → http://localhost:3012
+#   Dashboard   → http://localhost:3010  (login: admin@batrewind.local / admin123)
+#   Writer API  → http://localhost:8090
+#   Reader API  → http://localhost:8081
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -6,7 +17,7 @@ services:
       POSTGRES_PASSWORD: batrewind
       POSTGRES_DB: batrewind
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - demo_postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "batrewind"]
       interval: 5s
@@ -16,7 +27,7 @@ services:
   redis:
     image: redis:7-alpine
     volumes:
-      - redis_data:/data
+      - demo_redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -37,12 +48,13 @@ services:
       DB_PASSWORD: batrewind
       DB_NAME: batrewind
       REDIS_ADDR: redis:6379
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
-      INITIAL_OWNER_EMAIL: ${INITIAL_OWNER_EMAIL:-admin@batrewind.local}
-      INITIAL_OWNER_PASSWORD: ${INITIAL_OWNER_PASSWORD:-admin123}
-      INITIAL_OWNER_NAME: ${INITIAL_OWNER_NAME:-Admin}
+      JWT_SECRET: demo-secret-change-in-prod
+      INITIAL_OWNER_EMAIL: admin@batrewind.local
+      INITIAL_OWNER_PASSWORD: admin123
+      INITIAL_OWNER_NAME: Admin
       WRITER_PORT: 8080
       LOG_LEVEL: info
+      INITIAL_API_KEY: rew_playground_demo
     depends_on:
       postgres:
         condition: service_healthy
@@ -62,7 +74,7 @@ services:
       DB_USER: batrewind
       DB_PASSWORD: batrewind
       DB_NAME: batrewind
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_SECRET: demo-secret-change-in-prod
       READER_PORT: 8081
       LOG_LEVEL: info
     depends_on:
@@ -97,6 +109,18 @@ services:
     depends_on:
       - reader
 
+  playground:
+    build:
+      context: ./packages
+      dockerfile: playground/Dockerfile
+    ports:
+      - "3012:3002"
+    environment:
+      # Must match INITIAL_API_KEY on the writer — auto-created on first boot
+      PLAYGROUND_API_KEY: rew_playground_demo
+    depends_on:
+      - writer
+
 volumes:
-  postgres_data:
-  redis_data:
+  demo_postgres:
+  demo_redis:

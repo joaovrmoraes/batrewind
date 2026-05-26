@@ -55,9 +55,9 @@ type IngestRequest struct {
 
 // RawEvent mirrors the minimal rrweb event structure.
 type RawEvent struct {
-	Type      int             `json:"type"      binding:"required"`
-	Data      json.RawMessage `json:"data"      binding:"required"`
-	Timestamp int64           `json:"timestamp" binding:"required"`
+	Type      int             `json:"type"`
+	Data      json.RawMessage `json:"data"`
+	Timestamp int64           `json:"timestamp"`
 }
 
 // ListFilter holds query params for listing sessions.

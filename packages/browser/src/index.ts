@@ -29,8 +29,8 @@ function flush(force = false): void {
   const events = _buffer.splice(0)
   sendBeaconOrFetch(_config.endpoint, _config.apiKey, {
     session_id:     _sessionId,
-    identifier:     _sessionId, // Browser SDK uses session as identifier until overridden
-    service:        _config.service ?? 'web',
+    identifier:     _config.identifier ?? _sessionId,
+    service_name:   _config.serviceName ?? _config.service ?? 'web',
     environment:    _config.environment ?? 'production',
     bat_session_id: _config.batSessionId,
     events,
@@ -45,94 +45,99 @@ function onBeforeUnload(): void {
   flush(true)
 }
 
-export const BatRewind = {
-  /**
-   * Initialize BatRewind and start recording.
-   * Call once, as early as possible in your app.
-   */
-  init(config: BatRewindConfig): void {
-    if (_initialized) return
-    _initialized = true
-    _config = config
-    _sessionId = getOrCreateSessionId()
+/**
+ * Initialize BatRewind and start recording.
+ * Call once, as early as possible in your app.
+ */
+export function init(config: BatRewindConfig): void {
+  if (_initialized) return
+  _initialized = true
+  _config = config
+  _sessionId = getOrCreateSessionId()
 
-    const plugins = [
-      getRecordConsolePlugin({ level: ['log', 'info', 'warn', 'error'] }),
-    ]
+  const plugins = [
+    getRecordConsolePlugin({ level: ['log', 'info', 'warn', 'error'] }),
+  ]
 
-    let firstSnapshot = true
+  let firstSnapshot = true
 
-    _stopRecording = record({
-      emit(event: eventWithTime) {
-        const raw: RawEvent = {
-          type:      event.type,
-          data:      event.data,
-          timestamp: event.timestamp,
-        }
+  _stopRecording = record({
+    emit(event: eventWithTime) {
+      const raw: RawEvent = {
+        type:      event.type,
+        data:      event.data,
+        timestamp: event.timestamp,
+      }
 
-        // Send FullSnapshot immediately without buffering
-        if (event.type === FULL_SNAPSHOT_TYPE && firstSnapshot) {
-          firstSnapshot = false
-          sendBeaconOrFetch(config.endpoint, config.apiKey, {
-            session_id:     _sessionId!,
-            identifier:     _sessionId!,
-            service:        config.service ?? 'web',
-            environment:    config.environment ?? 'production',
-            bat_session_id: config.batSessionId,
-            events:         [raw],
-          })
-          return
-        }
+      // Send FullSnapshot immediately without buffering
+      if (event.type === FULL_SNAPSHOT_TYPE && firstSnapshot) {
+        firstSnapshot = false
+        sendBeaconOrFetch(config.endpoint, config.apiKey, {
+          session_id:     _sessionId!,
+          identifier:     config.identifier ?? _sessionId!,
+          service_name:   config.serviceName ?? config.service ?? 'web',
+          environment:    config.environment ?? 'production',
+          bat_session_id: config.batSessionId,
+          events:         [raw],
+        })
+        return
+      }
 
-        _buffer.push(raw)
+      _buffer.push(raw)
 
-        // Flush if buffer exceeds size limit
-        if (bufferSize() >= (config.flushMaxBytes ?? FLUSH_MAX_BYTES)) {
-          flush(true)
-        }
-      },
-      maskAllInputs: config.maskInputs ?? true,
-      plugins,
+      // Flush if buffer exceeds size limit
+      if (bufferSize() >= (config.flushMaxBytes ?? FLUSH_MAX_BYTES)) {
+        flush(true)
+      }
+    },
+    maskAllInputs: config.maskInputs ?? true,
+    plugins,
+  })
+
+  // Flush on interval
+  _flushTimer = setInterval(() => flush(true), config.flushIntervalMs ?? FLUSH_INTERVAL_MS)
+
+  // Flush on page hide/unload
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  window.addEventListener('beforeunload', onBeforeUnload)
+
+  // Mount widget unless disabled
+  if (config.showWidget !== false) {
+    _unmountWidget = mountWidget({
+      position: config.widgetPosition ?? 'bottom-right',
+      color:    config.widgetColor ?? '#818cf8',
+      label:    config.widgetLabel,
+      onReport: () => report(),
     })
-
-    // Flush on interval
-    _flushTimer = setInterval(() => flush(true), config.flushIntervalMs ?? FLUSH_INTERVAL_MS)
-
-    // Flush on page hide/unload
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    window.addEventListener('beforeunload', onBeforeUnload)
-
-    // Mount widget unless disabled
-    if (config.showWidget !== false) {
-      _unmountWidget = mountWidget({
-        position: config.widgetPosition ?? 'bottom-right',
-        color:    config.widgetColor ?? '#818cf8',
-        onReport: () => BatRewind.report(),
-      })
-    }
-  },
-
-  /**
-   * Manually flush and mark the current session as reported.
-   * Safe to call programmatically (e.g. on an error page) — no UI required.
-   */
-  report(): void {
-    flush(true)
-  },
-
-  /**
-   * Stop recording and clean up all listeners.
-   */
-  stop(): void {
-    if (_flushTimer) clearInterval(_flushTimer)
-    if (_stopRecording) _stopRecording()
-    if (_unmountWidget) _unmountWidget()
-    document.removeEventListener('visibilitychange', onVisibilityChange)
-    window.removeEventListener('beforeunload', onBeforeUnload)
-    flush(true)
-    _initialized = false
-    _config = null
-    _sessionId = null
-    _buffer = []
-  },
+  }
 }
+
+/**
+ * Manually flush and mark the current session as reported.
+ * Safe to call programmatically (e.g. on an error page) — no UI required.
+ */
+export function report(): void {
+  flush(true)
+}
+
+/**
+ * Stop recording and clean up all listeners.
+ */
+export function stop(): void {
+  if (_flushTimer) clearInterval(_flushTimer)
+  if (_stopRecording) _stopRecording()
+  if (_unmountWidget) _unmountWidget()
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  window.removeEventListener('beforeunload', onBeforeUnload)
+  flush(true)
+  _initialized = false
+  _config = null
+  _sessionId = null
+  _buffer = []
+}
+
+/**
+ * Namespace object — for ES module consumers: import { BatRewind } from '@batrewind/browser'
+ * In UMD: window.BatRewind.init() works directly (top-level exports)
+ */
+export const BatRewind = { init, report, stop }

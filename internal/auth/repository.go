@@ -93,7 +93,11 @@ func (r *repository) CreateProjectMember(member *ProjectMember) error {
 }
 
 func (r *repository) CreateAPIKey(key *APIKey) error {
-	return r.db.Create(key).Error
+	db := r.db
+	if key.ProjectID == "" {
+		db = db.Omit("ProjectID")
+	}
+	return db.Create(key).Error
 }
 
 func (r *repository) GetAPIKeyByHash(keyHash string) (*APIKey, error) {

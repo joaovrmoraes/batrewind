@@ -52,6 +52,14 @@ func main() {
 		}
 	}
 
+	if initialAPIKey := config.GetEnv("INITIAL_API_KEY", ""); initialAPIKey != "" {
+		if err := authSvc.EnsureAPIKey(initialAPIKey, "Demo"); err != nil {
+			slog.Error("Failed to ensure initial API key", "error", err)
+		} else {
+			slog.Info("Initial API key ready")
+		}
+	}
+
 	r := gin.Default()
 	r.Use(cors.Default())
 

@@ -118,6 +118,27 @@ func (s *Service) ValidateAPIKey(rawKey string) (*APIKey, error) {
 	return s.repo.GetAPIKeyByHash(keyHash)
 }
 
+// EnsureAPIKey creates the given raw key if it doesn't already exist.
+// Used to auto-provision a demo key on startup via INITIAL_API_KEY env var.
+func (s *Service) EnsureAPIKey(rawKey, name string) error {
+	hash := sha256.Sum256([]byte(rawKey))
+	keyHash := hex.EncodeToString(hash[:])
+
+	if _, err := s.repo.GetAPIKeyByHash(keyHash); err == nil {
+		return nil // already exists
+	}
+
+	key := &APIKey{
+		ID:        uuid.New().String(),
+		KeyHash:   keyHash,
+		ProjectID: "",
+		Name:      name,
+		CreatedAt: time.Now(),
+		Active:    true,
+	}
+	return s.repo.CreateAPIKey(key)
+}
+
 func (s *Service) EnsureProject(serviceName, apiKeyID string) (string, error) {
 	project, err := s.repo.GetProjectBySlug(serviceName)
 	if err == nil {
