@@ -80,7 +80,7 @@ func (r *Repository) GetByID(id string) (*ReplaySession, error) {
 
 func (r *Repository) GetEvents(sessionID string) ([]ReplayEvent, error) {
 	var events []ReplayEvent
-	err := r.db.Where("session_id = ?", sessionID).Order("seq ASC").Find(&events).Error
+	err := r.db.Where("session_id = ?", sessionID).Order("timestamp ASC, created_at ASC").Find(&events).Error
 	return events, err
 }
 

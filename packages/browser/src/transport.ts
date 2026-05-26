@@ -1,10 +1,10 @@
 import type { BatchPayload } from './types'
 
-export function sendBeaconOrFetch(endpoint: string, apiKey: string, payload: BatchPayload): void {
+// keepalive has a 64 KB body limit in Chrome — only use it for unload batches.
+// The initial FullSnapshot can exceed that easily (full DOM serialized).
+export function sendBatch(endpoint: string, apiKey: string, payload: BatchPayload, keepalive = false): void {
   const url = `${endpoint}/v1/record`
 
-  // fetch with keepalive works both in normal flow and on page unload.
-  // sendBeacon cannot send custom headers (no X-API-Key) → always 401.
   fetch(url, {
     method: 'POST',
     headers: {
@@ -12,7 +12,7 @@ export function sendBeaconOrFetch(endpoint: string, apiKey: string, payload: Bat
       'X-API-Key': apiKey,
     },
     body: JSON.stringify(payload),
-    keepalive: true,
+    keepalive,
   }).catch(() => {
     // Silently ignore — replay data is best-effort
   })

@@ -3,7 +3,7 @@ import type { eventWithTime } from '@rrweb/types'
 import { getRecordConsolePlugin } from '@rrweb/rrweb-plugin-console-record'
 import type { BatRewindConfig, RawEvent } from './types'
 import { getOrCreateSessionId } from './session'
-import { sendBeaconOrFetch } from './transport'
+import { sendBatch } from './transport'
 import { mountWidget } from './widget'
 
 const FLUSH_INTERVAL_MS = 5_000
@@ -22,27 +22,27 @@ function bufferSize(): number {
   return new TextEncoder().encode(JSON.stringify(_buffer)).length
 }
 
-function flush(force = false): void {
+function flush(force = false, keepalive = false): void {
   if (!_config || !_sessionId || _buffer.length === 0) return
   if (!force && bufferSize() < (_config.flushMaxBytes ?? FLUSH_MAX_BYTES)) return
 
   const events = _buffer.splice(0)
-  sendBeaconOrFetch(_config.endpoint, _config.apiKey, {
+  sendBatch(_config.endpoint, _config.apiKey, {
     session_id:     _sessionId,
     identifier:     _config.identifier ?? _sessionId,
     service_name:   _config.serviceName ?? _config.service ?? 'web',
     environment:    _config.environment ?? 'production',
     bat_session_id: _config.batSessionId,
     events,
-  })
+  }, keepalive)
 }
 
 function onVisibilityChange(): void {
-  if (document.visibilityState === 'hidden') flush(true)
+  if (document.visibilityState === 'hidden') flush(true, true)
 }
 
 function onBeforeUnload(): void {
-  flush(true)
+  flush(true, true)
 }
 
 /**
@@ -69,17 +69,19 @@ export function init(config: BatRewindConfig): void {
         timestamp: event.timestamp,
       }
 
-      // Send FullSnapshot immediately without buffering
+      // Send FullSnapshot immediately without buffering.
+      // No keepalive — FullSnapshot is sent on load (not unload) and
+      // can exceed the 64 KB keepalive body limit in Chrome.
       if (event.type === FULL_SNAPSHOT_TYPE && firstSnapshot) {
         firstSnapshot = false
-        sendBeaconOrFetch(config.endpoint, config.apiKey, {
+        sendBatch(config.endpoint, config.apiKey, {
           session_id:     _sessionId!,
           identifier:     config.identifier ?? _sessionId!,
           service_name:   config.serviceName ?? config.service ?? 'web',
           environment:    config.environment ?? 'production',
           bat_session_id: config.batSessionId,
           events:         [raw],
-        })
+        }, false) // keepalive: false — may be large
         return
       }
 
@@ -97,7 +99,7 @@ export function init(config: BatRewindConfig): void {
   // Flush on interval
   _flushTimer = setInterval(() => flush(true), config.flushIntervalMs ?? FLUSH_INTERVAL_MS)
 
-  // Flush on page hide/unload
+  // Flush on page hide/unload — use keepalive so the request survives tab close
   document.addEventListener('visibilitychange', onVisibilityChange)
   window.addEventListener('beforeunload', onBeforeUnload)
 

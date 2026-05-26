@@ -3,7 +3,7 @@
 
 # ── Stage 1: compile the browser SDK ────────────────────────
 FROM node:20-alpine AS sdk-builder
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN npm install -g pnpm@10
 
 WORKDIR /build
 COPY browser/package.json browser/pnpm-lock.yaml ./browser/

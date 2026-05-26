@@ -7,7 +7,7 @@ import React from 'react'
 import RRWebPlayer from 'rrweb-player'
 import 'rrweb-player/dist/style.css'
 
-export const Route = createFileRoute('/app/_layout/sessions/$id')({
+export const Route = createFileRoute('/app/_layout/sessions_/$id' as any)({
   component: PlayerPage,
 })
 
