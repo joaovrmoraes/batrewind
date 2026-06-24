@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 	"log/slog"
+	"os"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -15,15 +16,24 @@ import (
 )
 
 func RunMigrations(config *Database) error {
+	// Base dir for migration files. Defaults to the path relative to the working
+	// directory (correct for the Docker images, which run from /app). Tests and
+	// other callers override it with an absolute path via MIGRATIONS_DIR, since
+	// `go test` runs with the package directory as the working directory.
+	base := os.Getenv("MIGRATIONS_DIR")
+	if base == "" {
+		base = "internal/db/migrations"
+	}
+
 	var dsn, migrationsPath string
 	switch config.Driver {
 	case Postgres:
 		dsn = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 			config.User, config.Password, config.Host, config.Port, config.Name)
-		migrationsPath = "file://internal/db/migrations"
+		migrationsPath = "file://" + base
 	case SQLite:
 		dsn = "sqlite3://" + config.SQLitePath
-		migrationsPath = "file://internal/db/migrations/sqlite"
+		migrationsPath = "file://" + base + "/sqlite"
 	default:
 		return fmt.Errorf("unsupported driver: %s", config.Driver)
 	}
