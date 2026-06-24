@@ -1,0 +1,61 @@
+/* BatRewind palette — amber accent on deep navy */
+:root {
+  --ifm-color-primary: #f59e0b;
+  --ifm-color-primary-dark: #dd8e0a;
+  --ifm-color-primary-darker: #d08609;
+  --ifm-color-primary-darkest: #ab6f07;
+  --ifm-color-primary-light: #f7ab2b;
+  --ifm-color-primary-lighter: #f8b138;
+  --ifm-color-primary-lightest: #fac562;
+  --ifm-code-font-size: 85%;
+  --docusaurus-highlighted-code-line-bg: rgba(245, 158, 11, 0.1);
+}
+
+[data-theme='dark'] {
+  --ifm-background-color: #0f1117;
+  --ifm-background-surface-color: #1e2130;
+  --ifm-navbar-background-color: #0f1117;
+  --ifm-footer-background-color: #0d1117;
+  --ifm-toc-border-color: #2d3350;
+  --ifm-color-emphasis-300: #2d3350;
+  --ifm-hr-border-color: #2d3350;
+  --ifm-menu-color-background-active: rgba(245, 158, 11, 0.1);
+  --ifm-menu-color-background-hover: rgba(245, 158, 11, 0.06);
+  --docusaurus-highlighted-code-line-bg: rgba(245, 158, 11, 0.12);
+}
+
+/* Navbar border */
+.navbar {
+  border-bottom: 1px solid #2d3350;
+  box-shadow: none;
+}
+
+/* Sidebar */
+.menu__link--active {
+  color: #f59e0b !important;
+}
+
+/* Code blocks */
+[data-theme='dark'] .prism-code {
+  background: #0d1117 !important;
+}
+
+/* Admonitions */
+[data-theme='dark'] .alert {
+  background: #1e2130;
+  border-color: #2d3350;
+}
+
+/* Tables */
+[data-theme='dark'] table tr:nth-child(2n) {
+  background: #1e2130;
+}
+
+[data-theme='dark'] table th {
+  background: #0d1117;
+}
+
+/* Footer */
+.footer {
+  border-top: 1px solid #2d3350;
+}
