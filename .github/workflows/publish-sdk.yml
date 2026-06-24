@@ -1,0 +1,42 @@
+name: Publish SDK
+
+# Publishes @batrewind/browser to npm when a tag like `sdk-v1.0.0` is pushed.
+# Requires an NPM_TOKEN secret (Automation token) with publish access to the
+# @batrewind scope.
+on:
+  push:
+    tags:
+      - 'sdk-v*'
+
+jobs:
+  publish:
+    name: Build, test & publish @batrewind/browser
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/browser
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm run test
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

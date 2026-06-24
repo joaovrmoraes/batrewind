@@ -56,11 +56,20 @@ jobs:
       matrix:
         include:
           - service: writer
+            context: .
             dockerfile: cmd/writer/Dockerfile
           - service: reader
+            context: .
             dockerfile: cmd/reader/Dockerfile
           - service: worker
+            context: .
             dockerfile: cmd/worker/Dockerfile
+          - service: dashboard
+            context: packages/dashboard
+            dockerfile: packages/dashboard/Dockerfile
+          - service: docs
+            context: docs-site
+            dockerfile: docs-site/Dockerfile
 
     steps:
       - uses: actions/checkout@v4
@@ -90,7 +99,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
