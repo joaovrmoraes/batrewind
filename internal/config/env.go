@@ -21,6 +21,19 @@ func GetEnvAsInt(key string, defaultValue int) int {
 	return defaultValue
 }
 
+// DefaultJWTSecret is the placeholder secret shipped for local/dev use. The
+// services refuse to start with it when ENVIRONMENT is production.
+const DefaultJWTSecret = "change-me-in-production"
+
+// IsProduction reports whether the service is running in a production environment.
+func IsProduction() bool {
+	switch GetEnv("ENVIRONMENT", "") {
+	case "production", "prod":
+		return true
+	}
+	return false
+}
+
 func GetEnvAsBool(key string, defaultValue bool) bool {
 	if valueStr := GetEnv(key, ""); valueStr != "" {
 		switch valueStr {

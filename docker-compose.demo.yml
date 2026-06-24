@@ -118,6 +118,8 @@ services:
     environment:
       # Must match INITIAL_API_KEY on the writer — auto-created on first boot
       PLAYGROUND_API_KEY: rew_playground_demo
+      # Where the public /share/:token links point (the dashboard origin)
+      DASHBOARD_URL: http://localhost:3010
     depends_on:
       - writer
 

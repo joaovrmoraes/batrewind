@@ -14,6 +14,11 @@ type Config struct {
 	ScaleDownThreshold int64
 	WorkerScaleFactor  float64
 	CooldownPeriod     time.Duration
+
+	// RetentionDays deletes sessions older than this many days. 0 disables purging.
+	RetentionDays int
+	// PurgeInterval is how often the retention purge runs.
+	PurgeInterval time.Duration
 }
 
 func DefaultConfig() Config {
@@ -29,5 +34,8 @@ func DefaultConfig() Config {
 		ScaleDownThreshold: 5,
 		WorkerScaleFactor:  2.0,
 		CooldownPeriod:     15 * time.Second,
+
+		RetentionDays: 0, // disabled by default — opt-in to avoid surprise data loss
+		PurgeInterval: time.Hour,
 	}
 }

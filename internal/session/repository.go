@@ -15,7 +15,9 @@ func NewRepository(db *gorm.DB) *Repository {
 }
 
 func (r *Repository) UpsertSession(s *ReplaySession) error {
-	return r.db.Save(s).Error
+	// Never touch share_token here — it's managed separately so a later batch
+	// can't wipe a token set on an earlier one (or by the dashboard).
+	return r.db.Omit("share_token").Save(s).Error
 }
 
 func (r *Repository) IncrementEventCount(sessionID string, delta int) error {
@@ -72,6 +74,56 @@ func (r *Repository) List(f ListFilter) ([]ReplaySession, int64, error) {
 func (r *Repository) GetByID(id string) (*ReplaySession, error) {
 	var s ReplaySession
 	err := r.db.First(&s, "id = ?", id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+func (r *Repository) SetShareToken(id, token string) error {
+	return r.db.Model(&ReplaySession{}).
+		Where("id = ?", id).
+		UpdateColumn("share_token", token).
+		Error
+}
+
+// DeleteSession removes a session and all its events in one transaction.
+func (r *Repository) DeleteSession(id string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("session_id = ?", id).Delete(&ReplayEvent{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("id = ?", id).Delete(&ReplaySession{}).Error
+	})
+}
+
+// PurgeOlderThan deletes sessions (and their events) started before cutoff.
+// Returns the number of sessions removed.
+func (r *Repository) PurgeOlderThan(cutoff time.Time) (int64, error) {
+	var ids []string
+	if err := r.db.Model(&ReplaySession{}).
+		Where("started_at < ?", cutoff).
+		Pluck("id", &ids).Error; err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("session_id IN ?", ids).Delete(&ReplayEvent{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("id IN ?", ids).Delete(&ReplaySession{}).Error
+	})
+	if err != nil {
+		return 0, err
+	}
+	return int64(len(ids)), nil
+}
+
+func (r *Repository) GetByShareToken(token string) (*ReplaySession, error) {
+	var s ReplaySession
+	err := r.db.First(&s, "share_token = ?", token).Error
 	if err != nil {
 		return nil, err
 	}

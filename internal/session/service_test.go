@@ -20,10 +20,15 @@ type mockRepo struct {
 	listFn              func(f ListFilter) ([]ReplaySession, int64, error)
 	getByIDFn           func(id string) (*ReplaySession, error)
 	getEventsFn         func(sessionID string) ([]ReplayEvent, error)
+	setShareTokenFn     func(id, token string) error
+	getByShareTokenFn   func(token string) (*ReplaySession, error)
+	deleteSessionFn     func(id string) error
+	purgeOlderThanFn    func(cutoff time.Time) (int64, error)
 	saveFailedFn        func(f *FailedIngest) error
 	listFailedFn        func(onlyUnresolved bool) ([]FailedIngest, error)
 	getFailedFn         func(id string) (*FailedIngest, error)
 	markResolvedFn      func(id string) error
+	getStatsFn          func() (*Stats, error)
 }
 
 func (m *mockRepo) UpsertSession(s *ReplaySession) error {
@@ -75,6 +80,34 @@ func (m *mockRepo) GetEvents(sessionID string) ([]ReplayEvent, error) {
 	return nil, nil
 }
 
+func (m *mockRepo) SetShareToken(id, token string) error {
+	if m.setShareTokenFn != nil {
+		return m.setShareTokenFn(id, token)
+	}
+	return nil
+}
+
+func (m *mockRepo) GetByShareToken(token string) (*ReplaySession, error) {
+	if m.getByShareTokenFn != nil {
+		return m.getByShareTokenFn(token)
+	}
+	return nil, errors.New("not found")
+}
+
+func (m *mockRepo) DeleteSession(id string) error {
+	if m.deleteSessionFn != nil {
+		return m.deleteSessionFn(id)
+	}
+	return nil
+}
+
+func (m *mockRepo) PurgeOlderThan(cutoff time.Time) (int64, error) {
+	if m.purgeOlderThanFn != nil {
+		return m.purgeOlderThanFn(cutoff)
+	}
+	return 0, nil
+}
+
 func (m *mockRepo) SaveFailed(f *FailedIngest) error {
 	if m.saveFailedFn != nil {
 		return m.saveFailedFn(f)
@@ -103,10 +136,51 @@ func (m *mockRepo) MarkFailedResolved(id string) error {
 	return nil
 }
 
+func (m *mockRepo) GetStats() (*Stats, error) {
+	if m.getStatsFn != nil {
+		return m.getStatsFn()
+	}
+	return &Stats{}, nil
+}
+
 // --- Helpers ---
 
 func newSvc(repo *mockRepo) *Service {
 	return &Service{repo: repo}
+}
+
+func TestDelete(t *testing.T) {
+	var deletedID string
+	svc := newSvc(&mockRepo{deleteSessionFn: func(id string) error {
+		deletedID = id
+		return nil
+	}})
+	require.NoError(t, svc.Delete("session-abc"))
+	assert.Equal(t, "session-abc", deletedID)
+}
+
+func TestPurgeOlderThanDisabledWhenRetentionZero(t *testing.T) {
+	called := false
+	svc := newSvc(&mockRepo{purgeOlderThanFn: func(cutoff time.Time) (int64, error) {
+		called = true
+		return 0, nil
+	}})
+	n, err := svc.PurgeOlderThan(0)
+	require.NoError(t, err)
+	assert.Zero(t, n)
+	assert.False(t, called, "repo should not be hit when retention is disabled")
+}
+
+func TestPurgeOlderThanComputesCutoff(t *testing.T) {
+	var gotCutoff time.Time
+	svc := newSvc(&mockRepo{purgeOlderThanFn: func(cutoff time.Time) (int64, error) {
+		gotCutoff = cutoff
+		return 3, nil
+	}})
+	n, err := svc.PurgeOlderThan(24 * time.Hour)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), n)
+	assert.WithinDuration(t, time.Now().UTC().Add(-24*time.Hour), gotCutoff, time.Minute)
 }
 
 func validIngest() IngestRequest {

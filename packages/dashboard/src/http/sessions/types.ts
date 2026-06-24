@@ -11,6 +11,7 @@ export interface ReplaySession {
   ended_at: string | null
   duration_ms: number | null
   event_count: number
+  trigger: string
   created_at: string
 }
 

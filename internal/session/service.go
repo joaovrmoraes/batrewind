@@ -16,6 +16,10 @@ type repository interface {
 	List(f ListFilter) ([]ReplaySession, int64, error)
 	GetByID(id string) (*ReplaySession, error)
 	GetEvents(sessionID string) ([]ReplayEvent, error)
+	SetShareToken(id, token string) error
+	GetByShareToken(token string) (*ReplaySession, error)
+	DeleteSession(id string) error
+	PurgeOlderThan(cutoff time.Time) (int64, error)
 	GetStats() (*Stats, error)
 	SaveFailed(f *FailedIngest) error
 	ListFailed(onlyUnresolved bool) ([]FailedIngest, error)
@@ -45,12 +49,20 @@ func (s *Service) Ingest(req IngestRequest) error {
 		StartURL:     req.StartURL,
 		Environment:  defaultStr(req.Environment, "production"),
 		ServiceName:  req.ServiceName,
+		Trigger:      defaultStr(req.Trigger, "manual"),
 		StartedAt:    now,
 		CreatedAt:    now,
 	}
 
 	if err := s.repo.UpsertSession(session); err != nil {
 		return fmt.Errorf("upsert session: %w", err)
+	}
+
+	// Persist the client-supplied public token (stable per session, idempotent).
+	if req.ShareToken != "" {
+		if err := s.repo.SetShareToken(req.SessionID, req.ShareToken); err != nil {
+			return fmt.Errorf("set share token: %w", err)
+		}
 	}
 
 	events := make([]ReplayEvent, len(req.Events))
@@ -100,6 +112,71 @@ func (s *Service) GetEvents(sessionID string) ([]ReplayEvent, error) {
 
 func (s *Service) GetStats() (*Stats, error) {
 	return s.repo.GetStats()
+}
+
+// Delete permanently removes a session and its events (LGPD/GDPR erasure).
+func (s *Service) Delete(id string) error {
+	return s.repo.DeleteSession(id)
+}
+
+// PurgeOlderThan removes sessions started before now-retention. A non-positive
+// retention disables purging (returns 0, nil).
+func (s *Service) PurgeOlderThan(retention time.Duration) (int64, error) {
+	if retention <= 0 {
+		return 0, nil
+	}
+	return s.repo.PurgeOlderThan(time.Now().UTC().Add(-retention))
+}
+
+// rrwebPluginType is the rrweb event type for plugin events (e.g. console capture).
+const rrwebPluginType = 6
+
+// CreateShareToken returns a stable public token for a session, generating one
+// on first call. Idempotent — repeated calls return the same token.
+func (s *Service) CreateShareToken(id string) (string, error) {
+	sess, err := s.repo.GetByID(id)
+	if err != nil {
+		return "", fmt.Errorf("session not found: %w", err)
+	}
+	if sess.ShareToken != nil && *sess.ShareToken != "" {
+		return *sess.ShareToken, nil
+	}
+	token := uuid.New().String()
+	if err := s.repo.SetShareToken(id, token); err != nil {
+		return "", fmt.Errorf("set share token: %w", err)
+	}
+	return token, nil
+}
+
+// GetPublicSession resolves a share token to the redacted, login-free view.
+func (s *Service) GetPublicSession(token string) (*PublicSession, error) {
+	sess, err := s.repo.GetByShareToken(token)
+	if err != nil {
+		return nil, err
+	}
+	pub := sess.ToPublic()
+	return &pub, nil
+}
+
+// GetPublicEvents returns the player events for a shared session, with console
+// plugin events stripped so logs/stack traces never leak through the raw payload.
+func (s *Service) GetPublicEvents(token string) ([]ReplayEvent, error) {
+	sess, err := s.repo.GetByShareToken(token)
+	if err != nil {
+		return nil, err
+	}
+	events, err := s.repo.GetEvents(sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	filtered := events[:0]
+	for _, e := range events {
+		if e.Type == rrwebPluginType {
+			continue // console (and any future plugin) data is login-only
+		}
+		filtered = append(filtered, e)
+	}
+	return filtered, nil
 }
 
 func (s *Service) SaveFailed(f *FailedIngest) error {

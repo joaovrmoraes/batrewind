@@ -19,10 +19,36 @@ type ReplaySession struct {
 	EndedAt      *time.Time `json:"ended_at"`
 	DurationMs   *int64     `json:"duration_ms"`
 	EventCount   int        `json:"event_count"`
+	Trigger      string     `json:"trigger"` // why the session was uploaded: manual | error | stream
+	ShareToken   *string    `json:"share_token,omitempty" gorm:"column:share_token"` // public read-only link token
 	CreatedAt    time.Time  `json:"created_at"`
 }
 
 func (ReplaySession) TableName() string { return "replay_sessions" }
+
+// PublicSession is the redacted view returned by the public share endpoint.
+// It intentionally omits identity (identifier, email, name, start_url) and the
+// trigger — only enough to render the player with minimal context.
+type PublicSession struct {
+	ID          string     `json:"id"` // harmless: /app/sessions/:id is JWT-gated
+	ServiceName string     `json:"service_name"`
+	Environment string     `json:"environment"`
+	StartedAt   time.Time  `json:"started_at"`
+	DurationMs  *int64     `json:"duration_ms"`
+	EventCount  int        `json:"event_count"`
+}
+
+// ToPublic strips everything sensitive from a session.
+func (s *ReplaySession) ToPublic() PublicSession {
+	return PublicSession{
+		ID:          s.ID,
+		ServiceName: s.ServiceName,
+		Environment: s.Environment,
+		StartedAt:   s.StartedAt,
+		DurationMs:  s.DurationMs,
+		EventCount:  s.EventCount,
+	}
+}
 
 // ReplayEvent is a single rrweb event stored for a session.
 type ReplayEvent struct {
@@ -48,6 +74,11 @@ type IngestRequest struct {
 	StartURL     string `json:"start_url"`
 	Environment  string `json:"environment"`
 	ServiceName  string `json:"service_name"  binding:"required"`
+	// Why this batch was uploaded: manual (report) | error (auto) | stream (always mode).
+	Trigger      string `json:"trigger"`
+	// Client-generated public share token, stable per session. Lets report()
+	// return a shareable link without a server round-trip.
+	ShareToken   string `json:"share_token"`
 
 	// rrweb events batch.
 	Events []RawEvent `json:"events" binding:"required,min=1"`

@@ -42,6 +42,13 @@ func (s *Service) Start(ctx context.Context) {
 		"max", s.cfg.MaxWorkerCount,
 	)
 
+	// Retention purge runs independently of ingest — start it first so a backlog
+	// of pending messages can't delay or starve it.
+	if s.cfg.RetentionDays > 0 {
+		wg.Add(1)
+		go s.purgeLoop(ctx, &wg)
+	}
+
 	// Reclaim any pending messages from a previous crashed run.
 	s.reclaimPending(ctx)
 
@@ -52,6 +59,37 @@ func (s *Service) Start(ctx context.Context) {
 
 	wg.Wait()
 	slog.Info("All workers stopped")
+}
+
+// purgeLoop periodically deletes sessions older than the retention window.
+func (s *Service) purgeLoop(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+	retention := time.Duration(s.cfg.RetentionDays) * 24 * time.Hour
+	slog.Info("Retention purge enabled", "days", s.cfg.RetentionDays, "interval", s.cfg.PurgeInterval)
+
+	ticker := time.NewTicker(s.cfg.PurgeInterval)
+	defer ticker.Stop()
+
+	purge := func() {
+		deleted, err := s.svc.PurgeOlderThan(retention)
+		if err != nil {
+			slog.Error("Retention purge failed", "error", err)
+			return
+		}
+		if deleted > 0 {
+			slog.Info("Retention purge removed sessions", "count", deleted)
+		}
+	}
+
+	purge() // run once at startup
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			purge()
+		}
+	}
 }
 
 func (s *Service) reclaimPending(ctx context.Context) {

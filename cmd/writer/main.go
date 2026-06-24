@@ -5,12 +5,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joaovrmoraes/batrewind/internal/auth"
 	"github.com/joaovrmoraes/batrewind/internal/config"
 	"github.com/joaovrmoraes/batrewind/internal/db"
 	"github.com/joaovrmoraes/batrewind/internal/health"
+	"github.com/joaovrmoraes/batrewind/internal/middleware"
 	"github.com/joaovrmoraes/batrewind/internal/queue"
 	"github.com/joaovrmoraes/batrewind/internal/session"
 	"gorm.io/gorm"
@@ -35,7 +35,8 @@ func main() {
 	}
 	defer q.Close()
 
-	jwtSecret := config.GetEnv("JWT_SECRET", "change-me-in-production")
+	jwtSecret := config.GetEnv("JWT_SECRET", config.DefaultJWTSecret)
+	assertSecureSecret(jwtSecret)
 	authRepo := auth.NewRepository(conn)
 	authSvc := auth.NewService(authRepo, jwtSecret)
 
@@ -61,11 +62,20 @@ func main() {
 	}
 
 	r := gin.Default()
-	r.Use(cors.Default())
+	// Ingest is authenticated by API key (no cookies), so allowing any origin is
+	// safe by default; lock it down with WRITER_CORS_ORIGINS when desired.
+	r.Use(middleware.CORS(config.GetEnv("WRITER_CORS_ORIGINS", "*")))
+
+	maxBody := int64(config.GetEnvAsInt("WRITER_MAX_BODY_BYTES", 5_000_000)) // 5 MB
+	rateRPS := config.GetEnvAsInt("WRITER_RATE_LIMIT_RPS", 20)
+	rateBurst := config.GetEnvAsInt("WRITER_RATE_LIMIT_BURST", 40)
+	limiter := middleware.NewRateLimiter(float64(rateRPS), rateBurst)
 
 	v1 := r.Group("/v1")
 	ingest := v1.Group("")
+	ingest.Use(middleware.BodyLimit(maxBody))
 	ingest.Use(authSvc.APIKeyMiddleware())
+	ingest.Use(limiter.Middleware())
 	session.NewWriterHandler(q).RegisterRoutes(ingest)
 
 	health.NewHandler(conn).RegisterRoutes(r.Group("/"))
@@ -95,6 +105,19 @@ func connectDB() *gorm.DB {
 	slog.Error("Could not connect to database", "error", err)
 	os.Exit(1)
 	return nil
+}
+
+// assertSecureSecret refuses to boot in production with the default JWT secret,
+// and warns otherwise so dev keeps working.
+func assertSecureSecret(secret string) {
+	if secret != config.DefaultJWTSecret {
+		return
+	}
+	if config.IsProduction() {
+		slog.Error("JWT_SECRET is the insecure default in production — refusing to start. Set a strong JWT_SECRET.")
+		os.Exit(1)
+	}
+	slog.Warn("JWT_SECRET is the insecure default — set a strong secret before deploying to production")
 }
 
 func setupLogger() {

@@ -106,10 +106,66 @@
   }
 }
 
-/* rrweb-player overrides */
+/* rrweb-player overrides — match the dark theme + amber accent */
 .rr-player {
   background: transparent !important;
+  border-radius: 0.5rem;
+  box-shadow: none !important;
+  font-family: inherit;
 }
+
+.rr-player__frame {
+  border-radius: 0.5rem 0.5rem 0 0;
+  overflow: hidden;
+}
+
+.replayer-wrapper {
+  background: #fff; /* the recorded page itself stays white */
+}
+
+/* Controller bar */
+.rr-controller {
+  background: #1e2130 !important;
+  border-top: 1px solid #2d3350;
+  border-radius: 0 0 0.5rem 0.5rem;
+  color: #e2e8f0 !important;
+}
+
+.rr-controller__btns button {
+  color: #94a3b8 !important;
+  transition: color 0.15s;
+}
+.rr-controller__btns button:hover {
+  color: #f59e0b !important;
+}
+.rr-controller__btns button svg { fill: currentColor; }
+
+/* Play/pause active state */
+.rr-controller__btns button.active {
+  color: #f59e0b !important;
+  background: rgba(245, 158, 11, 0.12) !important;
+}
+
+/* Timeline / progress bar */
+.rr-timeline__time {
+  color: #64748b !important;
+  font-variant-numeric: tabular-nums;
+}
+.rr-progress {
+  background: #2d3350 !important;
+}
+.rr-progress__step {
+  background: rgba(245, 158, 11, 0.4) !important;
+}
+.rr-progress__handler {
+  background: #f59e0b !important;
+  border: 2px solid #1e2130 !important;
+}
+
+/* Speed switch */
+.switch .label { color: #94a3b8 !important; }
+.switch input[type='checkbox']:checked + label { background: #f59e0b !important; }
+.rr-controller__btns .switch.active { color: #f59e0b !important; }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }

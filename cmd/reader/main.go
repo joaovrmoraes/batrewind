@@ -5,12 +5,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joaovrmoraes/batrewind/internal/auth"
 	"github.com/joaovrmoraes/batrewind/internal/config"
 	"github.com/joaovrmoraes/batrewind/internal/db"
 	"github.com/joaovrmoraes/batrewind/internal/health"
+	"github.com/joaovrmoraes/batrewind/internal/middleware"
 	"github.com/joaovrmoraes/batrewind/internal/session"
 	"gorm.io/gorm"
 )
@@ -26,12 +26,18 @@ func main() {
 	}
 	defer sqlDB.Close()
 
-	jwtSecret := config.GetEnv("JWT_SECRET", "change-me-in-production")
+	jwtSecret := config.GetEnv("JWT_SECRET", config.DefaultJWTSecret)
+	assertSecureSecret(jwtSecret)
 	authRepo := auth.NewRepository(conn)
 	authSvc := auth.NewService(authRepo, jwtSecret)
 
 	r := gin.Default()
-	r.Use(cors.Default())
+	// The reader serves the dashboard API — restrict origins via READER_CORS_ORIGINS.
+	corsOrigins := config.GetEnv("READER_CORS_ORIGINS", "*")
+	if corsOrigins == "*" {
+		slog.Warn("READER_CORS_ORIGINS is unset — allowing all origins. Set it to your dashboard URL in production.")
+	}
+	r.Use(middleware.CORS(corsOrigins))
 
 	// Auth routes (public: login)
 	authHandler := auth.NewHandler(authSvc)
@@ -42,12 +48,17 @@ func main() {
 	protectedAuth.Use(authSvc.JWTMiddleware())
 	authHandler.RegisterProtectedRoutes(protectedAuth)
 
+	repo := session.NewRepository(conn)
+	svc := session.NewService(repo)
+	readerHandler := session.NewReaderHandler(svc)
+
+	// Public share routes (no auth) — redacted session + player-only events.
+	readerHandler.RegisterPublicRoutes(r.Group("/v1/public"))
+
 	// Session routes (protected)
 	v1 := r.Group("/v1")
 	v1.Use(authSvc.JWTMiddleware())
-	repo := session.NewRepository(conn)
-	svc := session.NewService(repo)
-	session.NewReaderHandler(svc).RegisterRoutes(v1)
+	readerHandler.RegisterRoutes(v1)
 
 	health.NewHandler(conn).RegisterRoutes(r.Group("/"))
 
@@ -76,6 +87,19 @@ func connectDB() *gorm.DB {
 	slog.Error("Could not connect to database", "error", err)
 	os.Exit(1)
 	return nil
+}
+
+// assertSecureSecret refuses to boot in production with the default JWT secret,
+// and warns otherwise so dev keeps working.
+func assertSecureSecret(secret string) {
+	if secret != config.DefaultJWTSecret {
+		return
+	}
+	if config.IsProduction() {
+		slog.Error("JWT_SECRET is the insecure default in production — refusing to start. Set a strong JWT_SECRET.")
+		os.Exit(1)
+	}
+	slog.Warn("JWT_SECRET is the insecure default — set a strong secret before deploying to production")
 }
 
 func setupLogger() {

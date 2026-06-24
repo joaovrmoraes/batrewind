@@ -267,6 +267,18 @@ function SessionsPage() {
                         {session.environment}
                       </span>
                     )}
+                    {session.trigger && session.trigger !== 'stream' && (
+                      <Badge
+                        variant="outline"
+                        className={`text-xs ${
+                          session.trigger === 'error'
+                            ? 'border-[#f87171]/40 text-[#f87171]'
+                            : 'border-[#f59e0b]/40 text-[#f59e0b]'
+                        }`}
+                      >
+                        {session.trigger === 'manual' ? 'reported' : session.trigger}
+                      </Badge>
+                    )}
                   </div>
 
                   {/* URL */}
@@ -307,7 +319,7 @@ function SessionsPage() {
               <PaginationPrevious
                 onClick={() =>
                   navigate({
-                    search: prev => ({ ...prev, page: Math.max(1, page - 1) }),
+                    search: (prev: z.infer<typeof searchSchema>) => ({ ...prev, page: Math.max(1, page - 1) }),
                   })
                 }
                 aria-disabled={page <= 1}
@@ -323,7 +335,7 @@ function SessionsPage() {
               <PaginationNext
                 onClick={() =>
                   navigate({
-                    search: prev => ({
+                    search: (prev: z.infer<typeof searchSchema>) => ({
                       ...prev,
                       page: Math.min(totalPages, page + 1),
                     }),

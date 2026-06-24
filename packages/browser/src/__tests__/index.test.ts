@@ -59,19 +59,83 @@ describe('BatRewind', () => {
     expect(_recordMock).toHaveBeenCalledOnce()
   })
 
-  it('FullSnapshot (type 2) is sent immediately without buffering', () => {
+  // ── buffered mode (default) ──────────────────────────────────────────────
+
+  it('buffered mode: nothing is uploaded until report() is called', () => {
     BatRewind.init(config)
+    const emit = getEmitFn()!
+    emit({ type: 2, data: { node: {} }, timestamp: 1000 }, true) // checkout snapshot
+    emit({ type: 3, data: {}, timestamp: 2000 })
+    // No streaming — the rolling buffer stays local
+    vi.advanceTimersByTime(10_000)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('buffered mode: report() uploads the rolling buffer with trigger=manual', () => {
+    BatRewind.init({ ...config, showWidget: false })
+    const emit = getEmitFn()!
+    emit({ type: 2, data: {}, timestamp: 1000 }, true) // checkout opens segment
+    emit({ type: 3, data: {}, timestamp: 2000 })
+
+    BatRewind.report()
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.trigger).toBe('manual')
+    expect(body.events[0].type).toBe(2) // buffer opens with a FullSnapshot
+    expect(body.events).toHaveLength(2)
+  })
+
+  it('buffered mode: rrweb is configured with a checkout interval', () => {
+    BatRewind.init({ ...config, checkoutEveryNms: 15_000 })
+    expect(_recordMock.mock.calls[0][0].checkoutEveryNms).toBe(15_000)
+  })
+
+  it('buffered mode: report() with empty buffer does not upload', () => {
+    BatRewind.init({ ...config, showWidget: false })
+    BatRewind.report()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('report() returns a shareable link and sends the token in the payload', () => {
+    BatRewind.init({ ...config, showWidget: false, shareBaseUrl: 'http://dash.local' })
+    const emit = getEmitFn()!
+    emit({ type: 2, data: {}, timestamp: 1000 }, true)
+
+    const result = BatRewind.report()
+    expect(result.shareToken).toBeTruthy()
+    expect(result.shareUrl).toBe(`http://dash.local/share/${result.shareToken}`)
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.share_token).toBe(result.shareToken)
+  })
+
+  it('identify() updates the identifier on subsequent uploads', () => {
+    BatRewind.init({ ...config, showWidget: false })
+    const emit = getEmitFn()!
+    emit({ type: 2, data: {}, timestamp: 1000 }, true)
+
+    BatRewind.identify('jane@company.com')
+    BatRewind.report()
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.identifier).toBe('jane@company.com')
+  })
+
+  // ── always mode (opt-in) ─────────────────────────────────────────────────
+
+  it('always mode: FullSnapshot (type 2) is sent immediately', () => {
+    BatRewind.init({ ...config, mode: 'always' })
     const emit = getEmitFn()!
     emit({ type: 2, data: { node: {} }, timestamp: 1000 })
     expect(fetchMock).toHaveBeenCalledOnce()
     const body = JSON.parse(fetchMock.mock.calls[0][1].body)
     expect(body.events[0].type).toBe(2)
+    expect(body.trigger).toBe('stream')
   })
 
-  it('non-snapshot events are buffered and flushed on interval', () => {
-    BatRewind.init(config)
+  it('always mode: non-snapshot events are buffered and flushed on interval', () => {
+    BatRewind.init({ ...config, mode: 'always' })
     const emit = getEmitFn()!
-    // First emit a FullSnapshot to initialize (sent immediately)
     emit({ type: 2, data: {}, timestamp: 1000 })
     fetchMock.mockClear()
 
@@ -82,15 +146,43 @@ describe('BatRewind', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 
-  it('report() flushes immediately without widget interaction', () => {
-    BatRewind.init({ ...config, showWidget: false })
-    const emit = getEmitFn()!
-    emit({ type: 2, data: {}, timestamp: 1000 }) // FullSnapshot
-    fetchMock.mockClear()
+  // ── privacy: console opt-in + masking ────────────────────────────────────
 
-    emit({ type: 3, data: {}, timestamp: 2000 })
-    BatRewind.report()
-    expect(fetchMock).toHaveBeenCalledOnce()
+  it('console capture is OFF by default (no plugins registered)', () => {
+    BatRewind.init({ ...config, showWidget: false })
+    expect(_recordMock.mock.calls[0][0].plugins).toHaveLength(0)
+  })
+
+  it('captureConsole: true registers the console plugin with all levels', async () => {
+    const { getRecordConsolePlugin } = await import('@rrweb/rrweb-plugin-console-record')
+    BatRewind.init({ ...config, showWidget: false, captureConsole: true })
+    expect(_recordMock.mock.calls[0][0].plugins).toHaveLength(1)
+    expect(getRecordConsolePlugin).toHaveBeenCalledWith({ level: ['log', 'info', 'warn', 'error'] })
+  })
+
+  it('captureConsole: { level } registers only the requested levels', async () => {
+    const { getRecordConsolePlugin } = await import('@rrweb/rrweb-plugin-console-record')
+    BatRewind.init({ ...config, showWidget: false, captureConsole: { level: ['error'] } })
+    expect(getRecordConsolePlugin).toHaveBeenCalledWith({ level: ['error'] })
+  })
+
+  it('passes mask/block selectors through to rrweb', () => {
+    BatRewind.init({
+      ...config,
+      showWidget: false,
+      maskTextClass: 'bat-mask',
+      maskTextSelector: '[data-pii]',
+      blockClass: 'bat-block',
+      blockSelector: '.secret',
+      ignoreClass: 'bat-ignore',
+    })
+    const opts = _recordMock.mock.calls[0][0]
+    expect(opts.maskTextClass).toBe('bat-mask')
+    expect(opts.maskTextSelector).toBe('[data-pii]')
+    expect(opts.blockClass).toBe('bat-block')
+    expect(opts.blockSelector).toBe('.secret')
+    expect(opts.ignoreClass).toBe('bat-ignore')
+    expect(opts.maskAllInputs).toBe(true)
   })
 
   it('stop cleans up and allows re-init', () => {

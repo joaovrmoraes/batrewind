@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ShareTokenRouteImport } from './routes/share.$token'
 import { Route as AppLayoutRouteImport } from './routes/app/_layout'
 import { Route as AppLayoutIndexRouteImport } from './routes/app/_layout/index'
 import { Route as AppLayoutSessionsRouteImport } from './routes/app/_layout/sessions'
@@ -24,6 +25,11 @@ const LoginRoute = LoginRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ShareTokenRoute = ShareTokenRouteImport.update({
+  id: '/share/$token',
+  path: '/share/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppLayoutRoute = AppLayoutRouteImport.update({
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/app': typeof AppLayoutRouteWithChildren
+  '/share/$token': typeof ShareTokenRoute
   '/app/sessions': typeof AppLayoutSessionsRoute
   '/app/': typeof AppLayoutIndexRoute
   '/app/sessions/$id': typeof AppLayoutSessionsIdRoute
@@ -58,6 +65,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/share/$token': typeof ShareTokenRoute
   '/app/sessions': typeof AppLayoutSessionsRoute
   '/app': typeof AppLayoutIndexRoute
   '/app/sessions/$id': typeof AppLayoutSessionsIdRoute
@@ -67,6 +75,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/app/_layout': typeof AppLayoutRouteWithChildren
+  '/share/$token': typeof ShareTokenRoute
   '/app/_layout/sessions': typeof AppLayoutSessionsRoute
   '/app/_layout/': typeof AppLayoutIndexRoute
   '/app/_layout/sessions_/$id': typeof AppLayoutSessionsIdRoute
@@ -77,16 +86,24 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/app'
+    | '/share/$token'
     | '/app/sessions'
     | '/app/'
     | '/app/sessions/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/app/sessions' | '/app' | '/app/sessions/$id'
+  to:
+    | '/'
+    | '/login'
+    | '/share/$token'
+    | '/app/sessions'
+    | '/app'
+    | '/app/sessions/$id'
   id:
     | '__root__'
     | '/'
     | '/login'
     | '/app/_layout'
+    | '/share/$token'
     | '/app/_layout/sessions'
     | '/app/_layout/'
     | '/app/_layout/sessions_/$id'
@@ -96,6 +113,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
   AppLayoutRoute: typeof AppLayoutRouteWithChildren
+  ShareTokenRoute: typeof ShareTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -112,6 +130,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/share/$token': {
+      id: '/share/$token'
+      path: '/share/$token'
+      fullPath: '/share/$token'
+      preLoaderRoute: typeof ShareTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/_layout': {
@@ -165,6 +190,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
   AppLayoutRoute: AppLayoutRouteWithChildren,
+  ShareTokenRoute: ShareTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

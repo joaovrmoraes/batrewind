@@ -1,24 +1,18 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { useSession, useSessionEvents } from '@/queries/sessions'
+import { useSession, useSessionEvents, useCreateShareLink, useDeleteSession } from '@/queries/sessions'
+import { buildTimeline, countConsole, KIND_META } from '@/lib/timeline'
+import { buildIncidentReport } from '@/lib/incident'
+import type { ReplayEvent, ReplaySession } from '@/http/sessions/types'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, Clock, Globe, User } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Check, Clock, Globe, Link2, MousePointerClick, Sparkles, Terminal, Trash2, User } from 'lucide-react'
 import React from 'react'
 import RRWebPlayer from 'rrweb-player'
 import 'rrweb-player/dist/style.css'
 
-export const Route = createFileRoute('/app/_layout/sessions_/$id' as any)({
+export const Route = createFileRoute('/app/_layout/sessions_/$id')({
   component: PlayerPage,
 })
-
-const RRWEB_TYPE_LABELS: Record<number, string> = {
-  1: 'DomContentLoaded',
-  2: 'FullSnapshot',
-  3: 'IncrementalSnapshot',
-  4: 'Meta',
-  5: 'Custom',
-  6: 'Plugin',
-}
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -39,10 +33,12 @@ function formatDuration(ms: number | null): string {
   return `${m}m ${s}s`
 }
 
-function typeColor(type: number): string {
-  if (type === 2) return 'text-[#818cf8]'
-  if (type === 3) return 'text-[#94a3b8]'
-  return 'text-[#60a5fa]'
+function formatClock(ts: number): string {
+  return new Date(ts).toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
 }
 
 function PlayerPage() {
@@ -57,17 +53,22 @@ function PlayerPage() {
 
   const isLoading = sessionLoading || eventsLoading
 
+  const timeline = React.useMemo(() => buildTimeline(events), [events])
+  const { errors, warnings } = React.useMemo(() => countConsole(timeline), [timeline])
+  const firstTs = events[0]?.timestamp ?? 0
+
   React.useEffect(() => {
     if (!playerRef.current || events.length === 0) return
 
     playerInstance.current?.destroy?.()
+    playerRef.current.innerHTML = ''
 
     playerInstance.current = new RRWebPlayer({
       target: playerRef.current,
       props: {
         events,
         width: playerRef.current.clientWidth || 800,
-        height: 450,
+        height: 440,
         autoPlay: false,
         showController: true,
         speedOption: [1, 2, 4, 8],
@@ -79,11 +80,20 @@ function PlayerPage() {
     }
   }, [events])
 
+  // Move the player to the moment an event happened (Sentry-style click-to-seek)
+  const seekTo = React.useCallback(
+    (ts: number) => {
+      const offset = Math.max(0, ts - firstTs)
+      playerInstance.current?.goto?.(offset)
+    },
+    [firstTs],
+  )
+
   if (isLoading) {
     return (
       <div className="p-6 space-y-4">
         <div className="h-8 w-40 rounded bg-card animate-pulse" />
-        <div className="h-[450px] rounded-lg bg-card animate-pulse" />
+        <div className="h-[440px] rounded-lg bg-card animate-pulse" />
       </div>
     )
   }
@@ -98,7 +108,7 @@ function PlayerPage() {
 
   return (
     <div className="p-6 space-y-5">
-      {/* Back + title */}
+      {/* Back + share */}
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"
@@ -109,6 +119,10 @@ function PlayerPage() {
           <ArrowLeft className="h-4 w-4" />
           Sessions
         </Button>
+
+        <CopyForAIButton session={session} events={events} />
+        <ShareButton id={session.id} />
+        <DeleteButton id={session.id} onDeleted={() => navigate({ to: '/app/sessions' })} />
       </div>
 
       {/* Session meta */}
@@ -120,10 +134,30 @@ function PlayerPage() {
 
         <Badge variant="secondary">{session.service_name}</Badge>
 
-        {session.environment && (
-          <span className="text-xs text-muted-foreground">
-            {session.environment}
+        {session.trigger && (
+          <Badge
+            variant="outline"
+            className={
+              session.trigger === 'error'
+                ? 'border-[#f87171]/40 text-[#f87171]'
+                : session.trigger === 'manual'
+                  ? 'border-[#f59e0b]/40 text-[#f59e0b]'
+                  : 'border-border text-muted-foreground'
+            }
+          >
+            {session.trigger === 'manual' ? 'reported' : session.trigger}
+          </Badge>
+        )}
+
+        {errors > 0 && (
+          <span className="flex items-center gap-1 text-xs text-[#f87171]">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            {errors} error{errors !== 1 ? 's' : ''}
           </span>
+        )}
+
+        {session.environment && (
+          <span className="text-xs text-muted-foreground">{session.environment}</span>
         )}
 
         {session.start_url && (
@@ -135,67 +169,221 @@ function PlayerPage() {
 
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground ml-auto">
           <Clock className="h-3.5 w-3.5" />
-          {formatDuration(session.duration_ms)} &middot;{' '}
-          {formatTime(session.started_at)}
+          {formatDuration(session.duration_ms)} &middot; {formatTime(session.started_at)}
         </div>
       </div>
 
-      {/* Player + timeline */}
+      {/* Player + breadcrumb timeline */}
       <div className="flex gap-4 items-start">
-        {/* Player */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 space-y-4">
           {events.length === 0 ? (
-            <div className="flex items-center justify-center h-[450px] bg-card border border-border rounded-lg text-sm text-muted-foreground">
+            <div className="flex items-center justify-center h-[440px] bg-card border border-border rounded-lg text-sm text-muted-foreground">
               No events recorded for this session.
             </div>
           ) : (
-            <div
-              ref={playerRef}
-              className="w-full rounded-lg overflow-hidden border border-border"
-            />
+            <div ref={playerRef} className="w-full rounded-lg overflow-hidden border border-border" />
           )}
+
+          {/* Console panel — Sentry style */}
+          <ConsolePanel
+            items={timeline.filter((t) => ['error', 'warn', 'log', 'info'].includes(t.kind))}
+            errors={errors}
+            warnings={warnings}
+            onSeek={seekTo}
+          />
         </div>
 
-        {/* Timeline */}
-        <div className="w-72 shrink-0 bg-card border border-border rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-border">
+        {/* Breadcrumb timeline (all actions) */}
+        <div className="w-80 shrink-0 bg-card border border-border rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+            <MousePointerClick className="h-4 w-4 text-muted-foreground" />
             <p className="text-sm font-medium text-foreground">
-              Events
-              <span className="ml-2 text-xs text-muted-foreground font-normal">
-                {events.length}
-              </span>
+              Timeline
+              <span className="ml-2 text-xs text-muted-foreground font-normal">{timeline.length}</span>
             </p>
           </div>
-          <div className="overflow-y-auto max-h-[410px]">
-            {events.map(event => (
-              <div
-                key={event.id}
-                className="flex items-start gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-secondary/30 transition-colors"
-              >
-                <div className="mt-0.5 shrink-0">
-                  <span
-                    className={`text-xs font-mono ${typeColor(event.type)}`}
+          <div className="overflow-y-auto max-h-[600px]">
+            {timeline.length === 0 ? (
+              <p className="px-4 py-6 text-xs text-muted-foreground text-center">
+                No user actions captured.
+              </p>
+            ) : (
+              timeline.map((item, i) => {
+                const meta = KIND_META[item.kind]
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => seekTo(item.timestamp)}
+                    className="w-full text-left flex items-start gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 hover:bg-secondary/40 transition-colors"
                   >
-                    T{event.type}
-                  </span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs text-foreground truncate">
-                    {RRWEB_TYPE_LABELS[event.type] ?? `Type ${event.type}`}
-                  </p>
-                  <p className="text-xs text-muted-foreground font-mono">
-                    {new Date(event.timestamp).toLocaleTimeString(undefined, {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit',
-                      fractionalSecondDigits: 3,
-                    })}
-                  </p>
-                </div>
-              </div>
-            ))}
+                    <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-xs font-medium ${meta.color}`}>{meta.label}</p>
+                      <p className="text-xs text-foreground/90 truncate">{item.message}</p>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground font-mono shrink-0 mt-0.5">
+                      +{formatDuration(item.timestamp - firstTs)}
+                    </span>
+                  </button>
+                )
+              })
+            )}
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function CopyForAIButton({ session, events }: { session: ReplaySession; events: ReplayEvent[] }) {
+  const [copied, setCopied] = React.useState(false)
+
+  async function handleCopy() {
+    const report = buildIncidentReport(session, events)
+    try {
+      await navigator.clipboard.writeText(report)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2200)
+    } catch {
+      // clipboard blocked — keep the UI quiet
+    }
+  }
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleCopy}
+      className="gap-2 ml-auto border-[#f59e0b]/40 text-[#f59e0b] hover:bg-[#f59e0b]/10 hover:text-[#f59e0b]"
+    >
+      {copied ? (
+        <>
+          <Check className="h-4 w-4 text-[#34d399]" />
+          Copied
+        </>
+      ) : (
+        <>
+          <Sparkles className="h-4 w-4" />
+          Copy for AI
+        </>
+      )}
+    </Button>
+  )
+}
+
+function ShareButton({ id }: { id: string }) {
+  const { mutateAsync, isPending } = useCreateShareLink()
+  const [copied, setCopied] = React.useState(false)
+
+  async function handleShare() {
+    try {
+      const token = await mutateAsync(id)
+      const url = `${window.location.origin}/share/${token}`
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2200)
+    } catch {
+      // surfaced by the mutation; keep the UI quiet
+    }
+  }
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleShare}
+      disabled={isPending}
+      className="gap-2"
+    >
+      {copied ? (
+        <>
+          <Check className="h-4 w-4 text-[#34d399]" />
+          Link copied
+        </>
+      ) : (
+        <>
+          <Link2 className="h-4 w-4" />
+          {isPending ? 'Generating…' : 'Share replay'}
+        </>
+      )}
+    </Button>
+  )
+}
+
+function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) {
+  const { mutateAsync, isPending } = useDeleteSession()
+
+  async function handleDelete() {
+    if (!window.confirm('Permanently delete this session and all its events? This cannot be undone.')) {
+      return
+    }
+    try {
+      await mutateAsync(id)
+      onDeleted()
+    } catch {
+      // surfaced by the mutation; keep the UI quiet
+    }
+  }
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleDelete}
+      disabled={isPending}
+      className="gap-2 border-[#f87171]/40 text-[#f87171] hover:bg-[#f87171]/10 hover:text-[#f87171]"
+    >
+      <Trash2 className="h-4 w-4" />
+      {isPending ? 'Deleting…' : 'Delete'}
+    </Button>
+  )
+}
+
+function ConsolePanel({
+  items,
+  errors,
+  warnings,
+  onSeek,
+}: {
+  items: ReturnType<typeof buildTimeline>
+  errors: number
+  warnings: number
+  onSeek: (ts: number) => void
+}) {
+  return (
+    <div className="bg-card border border-border rounded-lg overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-border flex items-center gap-2">
+        <Terminal className="h-4 w-4 text-muted-foreground" />
+        <p className="text-sm font-medium text-foreground">Console</p>
+        <div className="ml-auto flex items-center gap-3 text-xs">
+          {errors > 0 && <span className="text-[#f87171]">{errors} error{errors !== 1 ? 's' : ''}</span>}
+          {warnings > 0 && <span className="text-[#fbbf24]">{warnings} warn{warnings !== 1 ? 's' : ''}</span>}
+          <span className="text-muted-foreground">{items.length} log{items.length !== 1 ? 's' : ''}</span>
+        </div>
+      </div>
+      <div className="max-h-64 overflow-y-auto font-mono text-xs">
+        {items.length === 0 ? (
+          <p className="px-4 py-6 text-muted-foreground text-center">No console output.</p>
+        ) : (
+          items.map((item, i) => {
+            const meta = KIND_META[item.kind]
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => onSeek(item.timestamp)}
+                className="w-full text-left flex items-start gap-3 px-4 py-1.5 border-b border-border/30 last:border-0 hover:bg-secondary/40 transition-colors"
+              >
+                <span className={`shrink-0 uppercase ${meta.color} w-10`}>{meta.label}</span>
+                <span className="flex-1 min-w-0 text-foreground/90 whitespace-pre-wrap break-words">
+                  {item.message}
+                </span>
+                <span className="shrink-0 text-muted-foreground">{formatClock(item.timestamp)}</span>
+              </button>
+            )
+          })
+        )}
       </div>
     </div>
   )

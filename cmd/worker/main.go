@@ -38,6 +38,7 @@ func main() {
 	repo := session.NewRepository(conn)
 	svc := session.NewService(repo)
 	cfg := worker.DefaultConfig()
+	cfg.RetentionDays = config.GetEnvAsInt("RETENTION_DAYS", 0)
 	w := worker.New(cfg, svc, q)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
