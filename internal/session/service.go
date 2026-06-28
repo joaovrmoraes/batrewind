@@ -17,6 +17,7 @@ type repository interface {
 	GetByID(id string) (*ReplaySession, error)
 	GetEvents(sessionID string) ([]ReplayEvent, error)
 	SetShareToken(id, token string) error
+	SetClientMetadata(id string, m ClientMeta, browser, browserVersion, os, deviceType string) error
 	GetByShareToken(token string) (*ReplaySession, error)
 	DeleteSession(id string) error
 	PurgeOlderThan(cutoff time.Time) (int64, error)
@@ -62,6 +63,17 @@ func (s *Service) Ingest(req IngestRequest) error {
 	if req.ShareToken != "" {
 		if err := s.repo.SetShareToken(req.SessionID, req.ShareToken); err != nil {
 			return fmt.Errorf("set share token: %w", err)
+		}
+	}
+
+	// Store client/device metadata (first batch only). The raw payload is
+	// untrusted, so we clamp/truncate it and derive browser/os server-side
+	// rather than believing client-sent values.
+	if req.Client != nil {
+		meta := req.Client.Sanitized()
+		browser, browserVersion, os, deviceType := parseUserAgent(meta.UserAgent)
+		if err := s.repo.SetClientMetadata(req.SessionID, meta, browser, browserVersion, os, deviceType); err != nil {
+			return fmt.Errorf("set client metadata: %w", err)
 		}
 	}
 

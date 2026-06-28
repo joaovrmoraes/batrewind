@@ -21,6 +21,7 @@ type mockRepo struct {
 	getByIDFn           func(id string) (*ReplaySession, error)
 	getEventsFn         func(sessionID string) ([]ReplayEvent, error)
 	setShareTokenFn     func(id, token string) error
+	setClientMetaFn     func(id string, m ClientMeta, browser, browserVersion, os, deviceType string) error
 	getByShareTokenFn   func(token string) (*ReplaySession, error)
 	deleteSessionFn     func(id string) error
 	purgeOlderThanFn    func(cutoff time.Time) (int64, error)
@@ -83,6 +84,13 @@ func (m *mockRepo) GetEvents(sessionID string) ([]ReplayEvent, error) {
 func (m *mockRepo) SetShareToken(id, token string) error {
 	if m.setShareTokenFn != nil {
 		return m.setShareTokenFn(id, token)
+	}
+	return nil
+}
+
+func (m *mockRepo) SetClientMetadata(id string, meta ClientMeta, browser, browserVersion, os, deviceType string) error {
+	if m.setClientMetaFn != nil {
+		return m.setClientMetaFn(id, meta, browser, browserVersion, os, deviceType)
 	}
 	return nil
 }

@@ -30,6 +30,13 @@ export interface BatRewindConfig {
   /** Mask all password inputs. Default: true */
   maskInputs?: boolean
   /**
+   * Capture non-sensitive device metadata (screen/viewport size, language,
+   * timezone, user-agent) once per session, so the dashboard can group replays
+   * by device/browser. No cookies, storage or typed data is read. Default: true.
+   * Set to false to opt out entirely (e.g. for stricter LGPD/GDPR posture).
+   */
+  captureClientMetadata?: boolean
+  /**
    * Capture console output (log/info/warn/error) into the replay. OFF by default —
    * console logs frequently contain PII, so this is opt-in for LGPD/GDPR compliance.
    * - `true`: capture all levels.
@@ -80,6 +87,18 @@ export interface RawEvent {
   timestamp: number
 }
 
+/** Ambient device metadata, sent once per session (first batch). */
+export interface ClientMeta {
+  screen_width: number
+  screen_height: number
+  viewport_width: number
+  viewport_height: number
+  device_pixel_ratio: number
+  language: string
+  timezone: string
+  user_agent: string
+}
+
 export interface BatchPayload {
   session_id: string
   identifier: string
@@ -90,6 +109,8 @@ export interface BatchPayload {
   trigger?: 'manual' | 'error' | 'stream'
   /** Public share token, stable per session — lets report() return a link. */
   share_token?: string
+  /** Device metadata — present only on the first batch of a session. */
+  client?: ClientMeta
   events: RawEvent[]
 }
 

@@ -121,6 +121,31 @@ describe('BatRewind', () => {
     expect(body.identifier).toBe('jane@company.com')
   })
 
+  it('sends client metadata on the first batch only', () => {
+    BatRewind.init({ ...config, mode: 'always', showWidget: false })
+    const emit = getEmitFn()!
+
+    emit({ type: 2, data: { node: {} }, timestamp: 1000 }) // immediate upload (1st batch)
+    emit({ type: 3, data: {}, timestamp: 2000 })
+    BatRewind.report() // flushes a 2nd batch
+
+    const first = JSON.parse(fetchMock.mock.calls[0][1].body)
+    const second = JSON.parse(fetchMock.mock.calls[1][1].body)
+    expect(first.client).toBeDefined()
+    expect(first.client).toHaveProperty('user_agent')
+    expect(first.client).toHaveProperty('screen_width')
+    expect(second.client).toBeUndefined()
+  })
+
+  it('captureClientMetadata: false omits the client object', () => {
+    BatRewind.init({ ...config, mode: 'always', showWidget: false, captureClientMetadata: false })
+    const emit = getEmitFn()!
+    emit({ type: 2, data: { node: {} }, timestamp: 1000 })
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.client).toBeUndefined()
+  })
+
   // ── always mode (opt-in) ─────────────────────────────────────────────────
 
   it('always mode: FullSnapshot (type 2) is sent immediately', () => {

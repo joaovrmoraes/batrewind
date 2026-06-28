@@ -1,10 +1,11 @@
 import { record } from 'rrweb'
 import type { eventWithTime } from '@rrweb/types'
 import { getRecordConsolePlugin } from '@rrweb/rrweb-plugin-console-record'
-import type { BatRewindConfig, ConsoleLevel, RawEvent, ReportResult } from './types'
+import type { BatRewindConfig, ClientMeta, ConsoleLevel, RawEvent, ReportResult } from './types'
 import { getOrCreateSession } from './session'
 import { sendBatch } from './transport'
 import { mountWidget } from './widget'
+import { collectClientMeta } from './metadata'
 
 const FLUSH_INTERVAL_MS  = 5_000
 const FLUSH_MAX_BYTES    = 500_000 // 500KB
@@ -17,6 +18,10 @@ let _shareToken: string | null = null
 let _stopRecording: (() => void) | undefined | null = null
 let _unmountWidget: (() => void) | null = null
 let _initialized = false
+
+// Device metadata, collected once at init and attached to the first upload only.
+let _clientMeta: ClientMeta | null = null
+let _clientMetaSent = false
 
 // 'always' mode — linear buffer flushed on interval/size
 let _buffer: RawEvent[] = []
@@ -68,6 +73,8 @@ function uploadBuffer(trigger: 'manual' | 'error', keepalive = false): void {
 
 function upload(events: RawEvent[], trigger: 'manual' | 'error' | 'stream', keepalive: boolean): void {
   if (!_config || !_sessionId) return
+  // Attach device metadata to the first upload only; the server stores it once.
+  const client = _clientMeta && !_clientMetaSent ? _clientMeta : undefined
   sendBatch(_config.endpoint, _config.apiKey, {
     session_id:     _sessionId,
     identifier:     _config.identifier ?? _sessionId,
@@ -76,8 +83,10 @@ function upload(events: RawEvent[], trigger: 'manual' | 'error' | 'stream', keep
     bat_session_id: _config.batSessionId,
     trigger,
     share_token:    _shareToken ?? undefined,
+    client,
     events,
   }, keepalive)
+  if (client) _clientMetaSent = true
 }
 
 /** Build the public replay link from the dashboard base URL (or the endpoint). */
@@ -134,6 +143,10 @@ export function init(config: BatRewindConfig): void {
   const session = getOrCreateSession()
   _sessionId = session.id
   _shareToken = session.shareToken
+
+  // Opt-out (default on): collect ambient device metadata once.
+  _clientMeta = config.captureClientMetadata === false ? null : collectClientMeta()
+  _clientMetaSent = false
 
   const plugins = buildPlugins(config)
   const privacy = privacyOptions(config)
@@ -241,6 +254,8 @@ export function stop(): void {
   _shareToken = null
   _buffer = []
   _segments = []
+  _clientMeta = null
+  _clientMetaSent = false
 }
 
 /**

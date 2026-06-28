@@ -12,6 +12,18 @@ export interface ReplaySession {
   duration_ms: number | null
   event_count: number
   trigger: string
+  screen_width: number
+  screen_height: number
+  viewport_width: number
+  viewport_height: number
+  device_pixel_ratio: number
+  language: string
+  timezone: string
+  user_agent: string
+  browser: string
+  browser_version: string
+  os: string
+  device_type: string
   created_at: string
 }
 

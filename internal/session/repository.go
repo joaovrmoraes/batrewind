@@ -14,10 +14,40 @@ func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
 
+// omitOnUpsert are columns UpsertSession must never overwrite — they are set
+// once by dedicated methods, so a later batch (which omits them) can't wipe
+// the value an earlier batch wrote.
+var omitOnUpsert = []string{
+	"share_token",
+	"screen_width", "screen_height", "viewport_width", "viewport_height",
+	"device_pixel_ratio", "language", "timezone", "user_agent",
+	"browser", "browser_version", "os", "device_type",
+}
+
 func (r *Repository) UpsertSession(s *ReplaySession) error {
-	// Never touch share_token here — it's managed separately so a later batch
-	// can't wipe a token set on an earlier one (or by the dashboard).
-	return r.db.Omit("share_token").Save(s).Error
+	return r.db.Omit(omitOnUpsert...).Save(s).Error
+}
+
+// SetClientMetadata stores the sanitized device metadata and its server-derived
+// browser/os/device fields. Called only when the batch carries metadata (first
+// batch), so it doesn't race the per-batch upsert.
+func (r *Repository) SetClientMetadata(id string, m ClientMeta, browser, browserVersion, os, deviceType string) error {
+	return r.db.Model(&ReplaySession{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"screen_width":       m.ScreenWidth,
+			"screen_height":      m.ScreenHeight,
+			"viewport_width":     m.ViewportWidth,
+			"viewport_height":    m.ViewportHeight,
+			"device_pixel_ratio": m.DevicePixelRatio,
+			"language":           m.Language,
+			"timezone":           m.Timezone,
+			"user_agent":         m.UserAgent,
+			"browser":            browser,
+			"browser_version":    browserVersion,
+			"os":                 os,
+			"device_type":        deviceType,
+		}).Error
 }
 
 func (r *Repository) IncrementEventCount(sessionID string, delta int) error {

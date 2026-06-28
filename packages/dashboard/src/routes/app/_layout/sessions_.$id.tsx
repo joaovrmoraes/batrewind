@@ -5,7 +5,7 @@ import { buildTimeline, countConsole, KIND_META } from '@/lib/timeline'
 import { buildIncidentReport } from '@/lib/incident'
 import type { ReplayEvent, ReplaySession } from '@/http/sessions/types'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { AlertTriangle, ArrowLeft, Check, Clock, Globe, Link2, MousePointerClick, Sparkles, Terminal, Trash2, User } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Check, Clock, Globe, Languages, Link2, Monitor, MousePointerClick, Smartphone, Sparkles, Tablet, Terminal, Trash2, User } from 'lucide-react'
 import React from 'react'
 import RRWebPlayer from 'rrweb-player'
 import 'rrweb-player/dist/style.css'
@@ -173,6 +173,9 @@ function PlayerPage() {
         </div>
       </div>
 
+      {/* Device & browser metadata */}
+      <DeviceMeta session={session} />
+
       {/* Player + breadcrumb timeline */}
       <div className="flex gap-4 items-start">
         <div className="flex-1 min-w-0 space-y-4">
@@ -232,6 +235,48 @@ function PlayerPage() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function DeviceMeta({ session }: { session: ReplaySession }) {
+  const hasMeta =
+    session.browser || session.os || session.screen_width || session.language || session.timezone
+  if (!hasMeta) return null
+
+  const DeviceIcon =
+    session.device_type === 'mobile' ? Smartphone : session.device_type === 'tablet' ? Tablet : Monitor
+
+  const items: { icon: React.ReactNode; label: string }[] = []
+  if (session.browser) {
+    items.push({
+      icon: <Globe className="h-3.5 w-3.5" />,
+      label: session.browser_version ? `${session.browser} ${session.browser_version.split('.')[0]}` : session.browser,
+    })
+  }
+  if (session.os) items.push({ icon: <DeviceIcon className="h-3.5 w-3.5" />, label: session.os })
+  if (session.screen_width && session.screen_height) {
+    const dpr = session.device_pixel_ratio && session.device_pixel_ratio !== 1 ? ` @${session.device_pixel_ratio}x` : ''
+    items.push({ icon: <Monitor className="h-3.5 w-3.5" />, label: `${session.screen_width}×${session.screen_height}${dpr}` })
+  }
+  if (session.viewport_width && session.viewport_height) {
+    items.push({ icon: <Tablet className="h-3.5 w-3.5" />, label: `${session.viewport_width}×${session.viewport_height} viewport` })
+  }
+  if (session.language) items.push({ icon: <Languages className="h-3.5 w-3.5" />, label: session.language })
+  if (session.timezone) items.push({ icon: <Clock className="h-3.5 w-3.5" />, label: session.timezone })
+
+  return (
+    <div className="bg-card border border-border rounded-lg px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+      <span className="flex items-center gap-1.5 text-foreground font-medium">
+        <DeviceIcon className="h-3.5 w-3.5 text-muted-foreground" />
+        Device
+      </span>
+      {items.map((it, i) => (
+        <span key={i} className="flex items-center gap-1.5">
+          {it.icon}
+          {it.label}
+        </span>
+      ))}
     </div>
   )
 }

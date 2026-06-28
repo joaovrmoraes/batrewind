@@ -21,7 +21,23 @@ type ReplaySession struct {
 	EventCount   int        `json:"event_count"`
 	Trigger      string     `json:"trigger"` // why the session was uploaded: manual | error | stream
 	ShareToken   *string    `json:"share_token,omitempty" gorm:"column:share_token"` // public read-only link token
-	CreatedAt    time.Time  `json:"created_at"`
+
+	// Client/device metadata, captured by the SDK on the first batch.
+	ScreenWidth      int     `json:"screen_width"`
+	ScreenHeight     int     `json:"screen_height"`
+	ViewportWidth    int     `json:"viewport_width"`
+	ViewportHeight   int     `json:"viewport_height"`
+	DevicePixelRatio float64 `json:"device_pixel_ratio"`
+	Language         string  `json:"language"`
+	Timezone         string  `json:"timezone"`
+	UserAgent        string  `json:"user_agent"`
+	// Derived server-side from UserAgent — never trusted from the client.
+	Browser        string `json:"browser"`
+	BrowserVersion string `json:"browser_version"`
+	OS             string `json:"os"`
+	DeviceType     string `json:"device_type"`
+
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func (ReplaySession) TableName() string { return "replay_sessions" }
@@ -80,8 +96,76 @@ type IngestRequest struct {
 	// return a shareable link without a server round-trip.
 	ShareToken   string `json:"share_token"`
 
+	// Client/device metadata, sent once on the first batch. Optional — the SDK
+	// omits it when captureClientMetadata is disabled (LGPD/GDPR opt-out).
+	Client *ClientMeta `json:"client"`
+
 	// rrweb events batch.
 	Events []RawEvent `json:"events" binding:"required,min=1"`
+}
+
+// ClientMeta is the raw, untrusted device metadata reported by the browser SDK.
+type ClientMeta struct {
+	ScreenWidth      int     `json:"screen_width"`
+	ScreenHeight     int     `json:"screen_height"`
+	ViewportWidth    int     `json:"viewport_width"`
+	ViewportHeight   int     `json:"viewport_height"`
+	DevicePixelRatio float64 `json:"device_pixel_ratio"`
+	Language         string  `json:"language"`
+	Timezone         string  `json:"timezone"`
+	UserAgent        string  `json:"user_agent"`
+}
+
+// Field bounds — the payload is attacker-controlled, so we clamp/truncate
+// before anything reaches the database or the UA parser (avoids oversized
+// rows and ReDoS via a giant user-agent string).
+const (
+	maxDimension = 16384 // px — well above any real display
+	maxDPR       = 8.0
+	maxUALen     = 512
+	maxLangLen   = 35 // RFC 5646 language tags are short
+	maxTZLen     = 64
+)
+
+// Sanitized returns a copy with every field clamped/truncated to safe bounds.
+func (c ClientMeta) Sanitized() ClientMeta {
+	return ClientMeta{
+		ScreenWidth:      clampInt(c.ScreenWidth, 0, maxDimension),
+		ScreenHeight:     clampInt(c.ScreenHeight, 0, maxDimension),
+		ViewportWidth:    clampInt(c.ViewportWidth, 0, maxDimension),
+		ViewportHeight:   clampInt(c.ViewportHeight, 0, maxDimension),
+		DevicePixelRatio: clampFloat(c.DevicePixelRatio, 0, maxDPR),
+		Language:         truncate(c.Language, maxLangLen),
+		Timezone:         truncate(c.Timezone, maxTZLen),
+		UserAgent:        truncate(c.UserAgent, maxUALen),
+	}
+}
+
+func clampInt(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+func clampFloat(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
 }
 
 // RawEvent mirrors the minimal rrweb event structure.
