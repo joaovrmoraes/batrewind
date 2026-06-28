@@ -13,7 +13,8 @@ Session replay records the DOM, so it can capture sensitive data. BatRewind give
 |---|---|---|
 | `maskInputs` | **on** | All `<input>` values are masked |
 | `captureConsole` | **off** | Console output is **not** captured unless you opt in |
-| Share-link redaction | **always on** | Console events and identity are stripped from public links server-side |
+| `captureClientMetadata` | **on** | Ambient device metadata is captured (no cookies/storage/typed data); opt out with `false` |
+| Share-link redaction | **always on** | Console events, identity **and device metadata** are stripped from public links server-side |
 
 ---
 
@@ -81,12 +82,28 @@ Even when enabled, console output is **always stripped from public share links**
 
 ---
 
+## Device metadata (on by default)
+
+Each session also records ambient device context — screen resolution, viewport, device pixel ratio, language, timezone, and user agent — so you can tell *what* a user was on when a bug happened. Browser, OS and device type are derived **server-side** from the user agent (never trusted from the client), and every value is clamped/truncated before storage to keep a hostile client from injecting oversized data.
+
+This reads only ambient browser properties — **no cookies, no storage, nothing the user typed**. It's standard first-party debugging data, but it is mildly fingerprint-adjacent, so:
+
+- It's **stripped from public share links** along with identity and console.
+- You can turn it off entirely:
+
+```typescript
+BatRewind.init({ /* ... */, captureClientMetadata: false })
+```
+
+---
+
 ## What public share links expose
 
 When you share a session, the public endpoint returns a **redacted** view:
 
 - ❌ Console events (any rrweb plugin data) — stripped server-side
 - ❌ User identity (identifier, email, name) — omitted from metadata
+- ❌ Device metadata (browser, OS, screen, language, timezone, user agent) — omitted
 - ✅ The replay DOM and timeline of actions
 
 Note that text rendered in the page is part of the replay DOM. If a user's email is visible on screen and not masked, it will appear in the replay. Use mask/block selectors to prevent this.

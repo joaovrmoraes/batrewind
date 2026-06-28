@@ -110,6 +110,7 @@ See [Privacy & masking](/sdk/privacy) for details and recommendations.
 |---|---|---|---|
 | `maskInputs` | `boolean` | `true` | Mask all input values |
 | `captureConsole` | `boolean \| { level }` | `false` | **Opt-in.** Capture console output (PII risk) |
+| `captureClientMetadata` | `boolean` | `true` | Capture device metadata (screen, viewport, language, timezone, user agent) once per session. Set `false` to opt out |
 | `maskTextClass` | `string` | — | Mask text inside elements with this class |
 | `maskTextSelector` | `string` | — | Mask text matching this CSS selector |
 | `blockClass` | `string` | — | Don't record elements with this class |

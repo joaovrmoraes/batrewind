@@ -4,6 +4,10 @@ Self-hosted session replay for the web. Record what your users actually did — 
 
 Built with Go + rrweb. No cloud dependency, no vendor lock-in.
 
+<p align="center">
+  <img src="./batrewind-demo-en.gif" alt="BatRewind demo — report a bug, then replay the session frame by frame with full device context" width="100%">
+</p>
+
 ---
 
 ## How it works
