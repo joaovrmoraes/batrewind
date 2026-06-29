@@ -35,6 +35,7 @@ Browse all sessions, filter by identifier, service, or environment, and open any
 Opening a session shows:
 
 - **Replay** — a pixel-perfect rrweb reconstruction with play/pause, speed controls (1×–8×), and *skip inactive*.
+- **Device** — the browser, OS, screen resolution, viewport, language, and timezone the session was recorded on (when [device metadata](/sdk/privacy) capture is enabled in the SDK). Browser and OS are derived from the user agent server-side.
 - **Timeline** — a human-readable breadcrumb of every action (navigation, input, click, error). Click any item to **seek** the player to that moment.
 - **Console** — log/warn/error output captured during the session (only when [console capture](/sdk/privacy) was enabled in the SDK). Click an entry to seek.
 

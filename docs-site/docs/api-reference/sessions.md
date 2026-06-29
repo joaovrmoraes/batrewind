@@ -45,6 +45,20 @@ Response:
 
 Returns a single session's metadata. `404` if not found.
 
+Besides the core fields (`identifier`, `service_name`, `environment`, `trigger`, `started_at`, `duration_ms`, `event_count`, …), the object includes the device metadata captured by the SDK:
+
+| Field | Description |
+|---|---|
+| `screen_width` / `screen_height` | Screen resolution in px |
+| `viewport_width` / `viewport_height` | Browser viewport in px |
+| `device_pixel_ratio` | `window.devicePixelRatio` |
+| `language` | `navigator.language` |
+| `timezone` | IANA timezone |
+| `user_agent` | Raw user-agent string |
+| `browser` / `browser_version` / `os` / `device_type` | Derived from the user agent server-side |
+
+These are empty when the SDK opted out via `captureClientMetadata: false`. They are **omitted entirely** from the public share view (`GET /v1/public/sessions/:token`).
+
 ---
 
 ## `GET /v1/sessions/:id/events`
